@@ -15,7 +15,7 @@ if os.path.exists(options_path):
 
 class Settings(BaseSettings):
     GEMINI_API_KEY: str
-    GEMINI_MODEL: str = "models/gemini-2.5-flash" # default model supporting Live API
+    GEMINI_MODEL: str = "models/gemini-2.5-flash-live-preview" # default model supporting Live API
     GEMINI_VOICE: str = "Puck" # Optional Voice name: Aoede, Charon, Fenrir, Kore, Puck
 
     HOST: str = "0.0.0.0"
