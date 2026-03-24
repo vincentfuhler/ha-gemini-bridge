@@ -13,7 +13,6 @@ class GeminiWebSocketClient : public Component {
   esp_websocket_client_handle_t client_ = nullptr;
   microphone::Microphone *mic_;
   speaker::Speaker *speaker_;
-  speaker::Speaker *mixer_;
   std::string url_;
 
   uint8_t* audio_buffer_ = nullptr;
@@ -24,8 +23,11 @@ class GeminiWebSocketClient : public Component {
   std::mutex audio_mutex_;
 
  public:
-  GeminiWebSocketClient(std::string url, microphone::Microphone *mic, speaker::Speaker *speaker, speaker::Speaker *mixer = nullptr)
-      : url_(url), mic_(mic), speaker_(speaker), mixer_(mixer) {}
+  std::function<void()> on_connected_ = nullptr;
+  std::function<void()> on_disconnected_ = nullptr;
+
+  GeminiWebSocketClient(std::string url, microphone::Microphone *mic, speaker::Speaker *speaker)
+      : url_(url), mic_(mic), speaker_(speaker) {}
 
   ~GeminiWebSocketClient() {
       if (this->audio_buffer_ != nullptr) {
@@ -91,9 +93,8 @@ class GeminiWebSocketClient : public Component {
     switch (event_id) {
         case WEBSOCKET_EVENT_CONNECTED:
             ESP_LOGI("gemini_ws", "WebSocket Connected to Gemini Bridge!");
-            if (self->mixer_ != nullptr) {
-                ESP_LOGI("gemini_ws", "Pausing ESPHome mixer to gain exclusive DAC access...");
-                self->mixer_->stop();
+            if (self->on_connected_ != nullptr) {
+                self->on_connected_();
             }
             if (self->speaker_ != nullptr) {
                 // Bridge sends 32-bit 48kHz Stereo PCM directly to hardware DAC
@@ -111,9 +112,8 @@ class GeminiWebSocketClient : public Component {
                 self->write_idx_ = 0;
                 self->available_data_ = 0;
             }
-            if (self->mixer_ != nullptr) {
-                ESP_LOGI("gemini_ws", "Resuming ESPHome mixer...");
-                self->mixer_->start();
+            if (self->on_disconnected_ != nullptr) {
+                self->on_disconnected_();
             }
             break;
         case WEBSOCKET_EVENT_DATA:
