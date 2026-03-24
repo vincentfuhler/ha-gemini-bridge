@@ -1,5 +1,6 @@
 import asyncio
 import audioop
+import time
 from fastapi import WebSocket
 from websockets.exceptions import ConnectionClosed
 
@@ -24,9 +25,11 @@ class Session:
         self.out_rate = int(q.get("out_rate", 24000))
         self.out_depth = int(q.get("out_depth", 16))
         self.out_channels = int(q.get("out_channels", 1))
-
-
-    async def start(self):
+        
+        # Pacing / Flow Control tracking
+        self.bytes_sent_in_turn = 0
+        self.turn_start_time = None
+        self.last_audio_time = 0.0
         """Starts the session by connecting to Gemini and beginning the duplex stream."""
         await self.ha_ws.accept()
         logger.info(f"[Session {self.session_id}] Intercom started.")
@@ -97,6 +100,25 @@ class Session:
                 pcm_bytes = audioop.lin2lin(pcm_bytes, 2, self.out_depth // 8)
             if getattr(self, "out_channels", 1) == 2:
                 pcm_bytes = audioop.tostereo(pcm_bytes, self.out_depth // 8, 1, 1)
+                
+            now = time.time()
+            # If it's been more than 2 seconds since the last chunk, treat it as a new turn!
+            if self.turn_start_time is None or (now - getattr(self, "last_audio_time", 0)) > 2.0:
+                self.turn_start_time = now
+                self.bytes_sent_in_turn = 0
+
+            self.last_audio_time = now
+            self.bytes_sent_in_turn += len(pcm_bytes)
+            
+            # Pacing Math:
+            bytes_per_sec = self.out_rate * (self.out_depth // 8) * self.out_channels
+            audio_seconds_sent = self.bytes_sent_in_turn / bytes_per_sec
+            elapsed_time = now - self.turn_start_time
+            
+            # If we've sent more than 10 seconds of audio AHEAD of real time, pause to let ESP32 catch up!
+            buffer_ahead = audio_seconds_sent - elapsed_time
+            if buffer_ahead > 10.0:
+                await asyncio.sleep(buffer_ahead - 5.0) # Pause so it drains down to 5 seconds
                 
             await self.ha_ws.send_bytes(pcm_bytes)
         except Exception as e:
