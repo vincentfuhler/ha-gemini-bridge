@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   ha-gemini-bridge:
-    build: .
+    build: ./gemini-live-bridge
     container_name: ha-gemini-bridge
     restart: unless-stopped
     ports:
@@ -13,4 +13,4 @@ services:
       - HOST=0.0.0.0
       - PORT=8000
     volumes:
-      - ./src:/app/src
+      - ./gemini-live-bridge/src:/app/src
