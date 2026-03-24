@@ -13,7 +13,7 @@ esphome:
     then:
       - lambda: |-
           auto gemini_client = new GeminiWebSocketClient("${websocket_url}", id(echo_mic), id(echo_speaker));
-          App.register_component(gemini_client);
+          gemini_client->setup();
 
 esp32:
   board: m5stack-atom

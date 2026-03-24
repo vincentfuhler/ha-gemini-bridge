@@ -13,10 +13,9 @@ esphome:
     priority: -100
     then:
       - lambda: |-
-          // Registriere den WebSocket-Client nativ in ESPHome
           // Nutze die exakten C++ Objekt-IDs aus der Nabu Casa Basis!
           auto gemini_client = new GeminiWebSocketClient("${websocket_url}", id(i2s_mics), id(i2s_audio_speaker));
-          App.register_component(gemini_client);
+          gemini_client->setup();
 
 # Offizielle Hardware-Konfiguration von Nabu Casa für das Voice PE laden
 packages:

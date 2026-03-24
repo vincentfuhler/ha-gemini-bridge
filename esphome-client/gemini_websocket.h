@@ -28,10 +28,10 @@ class GeminiWebSocketClient : public Component {
 
     // Register microphone callback to stream audio to WebSocket
     if (this->mic_ != nullptr) {
-      this->mic_->add_data_callback([this](const std::vector<int16_t> &data) {
+      this->mic_->add_data_callback([this](const std::vector<uint8_t> &data) {
         if (this->client_ != nullptr && esp_websocket_client_is_connected(this->client_)) {
           // Send raw PCM binary data chunks
-          esp_websocket_client_send_bin(this->client_, (const char*)data.data(), data.size() * sizeof(int16_t), portMAX_DELAY);
+          esp_websocket_client_send_bin(this->client_, (const char*)data.data(), data.size(), portMAX_DELAY);
         }
       });
       // Start microphone recording 
