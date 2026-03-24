@@ -1,5 +1,6 @@
 #include "esphome.h"
 #include "esp_websocket_client.h"
+#include "esp_heap_caps.h"
 #include <queue>
 #include <mutex>
 #include <vector>
@@ -14,7 +15,7 @@ class GeminiWebSocketClient : public Component {
   speaker::Speaker *speaker_;
   std::string url_;
 
-  std::vector<uint8_t> audio_buffer_;
+  uint8_t* audio_buffer_ = nullptr;
   size_t read_idx_ = 0;
   size_t write_idx_ = 0;
   size_t available_data_ = 0;
@@ -25,11 +26,21 @@ class GeminiWebSocketClient : public Component {
   GeminiWebSocketClient(std::string url, microphone::Microphone *mic, speaker::Speaker *speaker)
       : url_(url), mic_(mic), speaker_(speaker) {}
 
+  ~GeminiWebSocketClient() {
+      if (this->audio_buffer_ != nullptr) {
+          heap_caps_free(this->audio_buffer_);
+      }
+  }
+
   void setup() override {
     ESP_LOGI("gemini_ws", "Initializing Gemini WebSocket Client to %s", this->url_.c_str());
 
-    // Allocate audio ringbuffer before starting (forces PSRAM allocation)
-    this->audio_buffer_.resize(this->BUFFER_SIZE);
+    // Explicitly allocate ringbuffer in PSRAM to prevent std::bad_alloc aborts
+    this->audio_buffer_ = (uint8_t*)heap_caps_malloc(this->BUFFER_SIZE, MALLOC_CAP_SPIRAM);
+    if (this->audio_buffer_ == nullptr) {
+        ESP_LOGE("gemini_ws", "Failed to allocate audio buffer in PSRAM!");
+        return; // Don't proceed if allocation failed
+    }
 
     // Configure WebSocket Client (requires esp-idf framework in ESPHome)
     esp_websocket_client_config_t websocket_cfg = {};
@@ -63,7 +74,7 @@ class GeminiWebSocketClient : public Component {
             contiguous_avail = this->available_data_;
         }
         
-        const uint8_t *data_ptr = this->audio_buffer_.data() + this->read_idx_;
+        const uint8_t *data_ptr = this->audio_buffer_ + this->read_idx_;
         size_t written = this->speaker_->play(data_ptr, contiguous_avail);
         
         this->read_idx_ = (this->read_idx_ + written) % this->BUFFER_SIZE;
