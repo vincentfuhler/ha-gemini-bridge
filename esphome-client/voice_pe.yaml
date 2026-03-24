@@ -25,12 +25,12 @@ wifi:
         // Wird erst sicher ausgeführt, sobald das WLAN steht!
         auto gemini_client = new GeminiWebSocketClient("${websocket_url}", id(i2s_mics), id(i2s_audio_speaker));
         gemini_client->on_connected_ = []() {
-            ESP_LOGI("gemini_ws", "Pausing ESPHome mixer to gain exclusive DAC access...");
-            id(mixing_speaker)->stop();
+            ESP_LOGI("gemini_ws", "Disabling ESPHome mixer to gain exclusive DAC access...");
+            id(mixing_speaker)->mark_failed(); // Permantently disables the mixer's loop() task
         };
         gemini_client->on_disconnected_ = []() {
-            ESP_LOGI("gemini_ws", "Resuming ESPHome mixer...");
-            id(mixing_speaker)->start();
+            ESP_LOGI("gemini_ws", "Session ended. Audio is free now.");
+            // Mixer remains disabled, requires ESP reboot to restore normal features.
         };
         gemini_client->setup();
 
