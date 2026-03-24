@@ -47,9 +47,18 @@ class GeminiWebSocketClient : public Component {
     switch (event_id) {
         case WEBSOCKET_EVENT_CONNECTED:
             ESP_LOGI("gemini_ws", "WebSocket Connected to Gemini Bridge!");
+            if (self->speaker_ != nullptr) {
+                // Bridge sends 32-bit 48kHz mono PCM to the speaker
+                audio::AudioStreamInfo info(32, 1, 48000);
+                self->speaker_->set_audio_stream_info(info);
+                self->speaker_->start();
+            }
             break;
         case WEBSOCKET_EVENT_DISCONNECTED:
             ESP_LOGW("gemini_ws", "WebSocket Disconnected");
+            if (self->speaker_ != nullptr) {
+                self->speaker_->stop();
+            }
             break;
         case WEBSOCKET_EVENT_DATA:
             // Opcode 2 means Binary Data (Audio)

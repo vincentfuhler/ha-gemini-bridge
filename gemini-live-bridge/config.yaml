@@ -1,6 +1,6 @@
 name: "Gemini Live Bridge"
 description: "A high-performance bridge service connecting Home Assistant Voice to the Gemini Live API."
-version: "1.0.8"
+version: "1.0.6"
 slug: "gemini_bridge"
 init: false
 arch:
@@ -11,7 +11,7 @@ arch:
   - i386
 options:
   GEMINI_API_KEY: ""
-  GEMINI_MODEL: "models/gemini-live-2.5-flash-native-audio"
+  GEMINI_MODEL: "models/gemini-2.5-flash-live-preview"
   GEMINI_VOICE: "Puck"
   LOG_LEVEL: "INFO"
 schema:
