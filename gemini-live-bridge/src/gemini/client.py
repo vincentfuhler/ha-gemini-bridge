@@ -18,7 +18,7 @@ class GeminiLiveClient:
         self.model = settings.GEMINI_MODEL
         self.voice = settings.GEMINI_VOICE
         self.ws: websockets.WebSocketClientProtocol | None = None
-        self.uri = f"wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContent?key={self.api_key}"
+        self.uri = f"wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key={self.api_key}"
 
     async def connect(self):
         """Establish the WebSocket connection to Gemini."""
