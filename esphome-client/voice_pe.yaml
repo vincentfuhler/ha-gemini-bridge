@@ -9,13 +9,14 @@ esphome:
   includes:
     - gemini_websocket.h
   on_boot:
-    # Priority -100 ensures the hardware is fully initialized before we connect
-    priority: -100
-    then:
-      - lambda: |-
-          // Nutze die exakten C++ Objekt-IDs aus der Nabu Casa Basis!
-          auto gemini_client = new GeminiWebSocketClient("${websocket_url}", id(i2s_mics), id(i2s_audio_speaker));
-          gemini_client->setup();
+    - priority: -10
+      then:
+        - wait_until:
+            wifi.connected:
+        - lambda: |-
+            // Wird erst ausgeführt, sobald das WLAN steht!
+            auto gemini_client = new GeminiWebSocketClient("${websocket_url}", id(i2s_mics), id(i2s_audio_speaker));
+            gemini_client->setup();
 
 # Offizielle Hardware-Konfiguration von Nabu Casa für das Voice PE laden
 packages:
@@ -27,7 +28,7 @@ packages:
 # WLAN Konfiguration
 wifi:
   ssid: "HEPTACOM UID_IoT"
-  password: "5yeh)SRM"
+  password: "(3DrFrQK"
 
 # Standard APIs
 api:
