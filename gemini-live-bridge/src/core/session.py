@@ -23,6 +23,7 @@ class Session:
         self.in_depth = int(q.get("in_depth", 16))
         self.out_rate = int(q.get("out_rate", 24000))
         self.out_depth = int(q.get("out_depth", 16))
+        self.out_channels = int(q.get("out_channels", 1))
 
 
     async def start(self):
@@ -90,10 +91,12 @@ class Session:
     async def _on_gemini_audio_chunk(self, pcm_bytes: bytes):
         """Callback invoked when Gemini produces audio bytes. Sends directly back to HA."""
         try:
-            if self.out_rate != 24000:
+            if getattr(self, "out_rate", 16000) != 24000:
                 pcm_bytes, _ = audioop.ratecv(pcm_bytes, 2, 1, 24000, self.out_rate, None)
-            if self.out_depth != 16:
+            if getattr(self, "out_depth", 16) != 16:
                 pcm_bytes = audioop.lin2lin(pcm_bytes, 2, self.out_depth // 8)
+            if getattr(self, "out_channels", 1) == 2:
+                pcm_bytes = audioop.tostereo(pcm_bytes, self.out_depth // 8, 1, 1)
                 
             await self.ha_ws.send_bytes(pcm_bytes)
         except Exception as e:

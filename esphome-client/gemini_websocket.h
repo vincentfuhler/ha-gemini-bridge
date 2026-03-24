@@ -91,8 +91,8 @@ class GeminiWebSocketClient : public Component {
         case WEBSOCKET_EVENT_CONNECTED:
             ESP_LOGI("gemini_ws", "WebSocket Connected to Gemini Bridge!");
             if (self->speaker_ != nullptr) {
-                // Bridge sends 16-bit 16kHz mono PCM to the speaker
-                audio::AudioStreamInfo info(16, 1, 16000);
+                // Bridge sends 32-bit 48kHz Stereo PCM directly to hardware DAC
+                audio::AudioStreamInfo info(32, 2, 48000);
                 self->speaker_->set_audio_stream_info(info);
                 self->speaker_->start();
             }
