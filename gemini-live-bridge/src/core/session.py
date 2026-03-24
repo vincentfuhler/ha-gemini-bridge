@@ -1,4 +1,5 @@
 import asyncio
+import audioop
 from fastapi import WebSocket
 from websockets.exceptions import ConnectionClosed
 
@@ -16,6 +17,13 @@ class Session:
         self.session_id = session_id
         self.gemini_client = GeminiLiveClient()
         self.tasks: list[asyncio.Task] = []
+        
+        q = websocket.query_params
+        self.in_rate = int(q.get("in_rate", 16000))
+        self.in_depth = int(q.get("in_depth", 16))
+        self.out_rate = int(q.get("out_rate", 24000))
+        self.out_depth = int(q.get("out_depth", 16))
+
 
     async def start(self):
         """Starts the session by connecting to Gemini and beginning the duplex stream."""
@@ -62,7 +70,13 @@ class Session:
                 message = await self.ha_ws.receive()
                 
                 if message.get("bytes"):
-                    await self.gemini_client.send_audio_chunk(message["bytes"])
+                    pcm_bytes = message["bytes"]
+                    if self.in_depth != 16:
+                        pcm_bytes = audioop.lin2lin(pcm_bytes, self.in_depth // 8, 2)
+                    if self.in_rate != 16000:
+                        pcm_bytes, _ = audioop.ratecv(pcm_bytes, 2, 1, self.in_rate, 16000, None)
+                    
+                    await self.gemini_client.send_audio_chunk(pcm_bytes)
                 elif message.get("text"):
                     # Could handle commands (e.g. JSON metadata) from HA here
                     text_data = message["text"]
@@ -76,6 +90,11 @@ class Session:
     async def _on_gemini_audio_chunk(self, pcm_bytes: bytes):
         """Callback invoked when Gemini produces audio bytes. Sends directly back to HA."""
         try:
+            if self.out_rate != 24000:
+                pcm_bytes, _ = audioop.ratecv(pcm_bytes, 2, 1, 24000, self.out_rate, None)
+            if self.out_depth != 16:
+                pcm_bytes = audioop.lin2lin(pcm_bytes, 2, self.out_depth // 8)
+                
             await self.ha_ws.send_bytes(pcm_bytes)
         except Exception as e:
             logger.error(f"[Session {self.session_id}] Error sending to HA: {e}")
