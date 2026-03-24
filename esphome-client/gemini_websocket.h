@@ -14,9 +14,12 @@ class GeminiWebSocketClient : public Component {
   speaker::Speaker *speaker_;
   std::string url_;
 
-  std::queue<std::vector<uint8_t>> audio_queue_;
+  std::vector<uint8_t> audio_buffer_;
+  size_t read_idx_ = 0;
+  size_t write_idx_ = 0;
+  size_t available_data_ = 0;
+  const size_t BUFFER_SIZE = 1024 * 512; // 512 KB
   std::mutex audio_mutex_;
-  size_t current_chunk_offset_ = 0;
 
  public:
   GeminiWebSocketClient(std::string url, microphone::Microphone *mic, speaker::Speaker *speaker)
@@ -24,6 +27,9 @@ class GeminiWebSocketClient : public Component {
 
   void setup() override {
     ESP_LOGI("gemini_ws", "Initializing Gemini WebSocket Client to %s", this->url_.c_str());
+
+    // Allocate audio ringbuffer before starting (forces PSRAM allocation)
+    this->audio_buffer_.resize(this->BUFFER_SIZE);
 
     // Configure WebSocket Client (requires esp-idf framework in ESPHome)
     esp_websocket_client_config_t websocket_cfg = {};
@@ -50,18 +56,18 @@ class GeminiWebSocketClient : public Component {
     if (this->speaker_ == nullptr) return;
 
     std::lock_guard<std::mutex> lock(this->audio_mutex_);
-    if (!this->audio_queue_.empty()) {
-        auto &chunk = this->audio_queue_.front();
-        size_t available = chunk.size() - this->current_chunk_offset_;
-        const uint8_t *data_ptr = chunk.data() + this->current_chunk_offset_;
-        
-        size_t written = this->speaker_->play(data_ptr, available);
-        this->current_chunk_offset_ += written;
-
-        if (this->current_chunk_offset_ >= chunk.size()) {
-            this->audio_queue_.pop();
-            this->current_chunk_offset_ = 0;
+    if (this->available_data_ > 0) {
+        // Write the largest contiguous chunk possible
+        size_t contiguous_avail = this->BUFFER_SIZE - this->read_idx_;
+        if (contiguous_avail > this->available_data_) {
+            contiguous_avail = this->available_data_;
         }
+        
+        const uint8_t *data_ptr = this->audio_buffer_.data() + this->read_idx_;
+        size_t written = this->speaker_->play(data_ptr, contiguous_avail);
+        
+        this->read_idx_ = (this->read_idx_ + written) % this->BUFFER_SIZE;
+        this->available_data_ -= written;
     }
   }
 
@@ -85,19 +91,25 @@ class GeminiWebSocketClient : public Component {
             if (self->speaker_ != nullptr) {
                 self->speaker_->stop();
                 std::lock_guard<std::mutex> lock(self->audio_mutex_);
-                while(!self->audio_queue_.empty()) self->audio_queue_.pop();
-                self->current_chunk_offset_ = 0;
+                self->read_idx_ = 0;
+                self->write_idx_ = 0;
+                self->available_data_ = 0;
             }
             break;
         case WEBSOCKET_EVENT_DATA:
             // Opcode 2 means Binary Data (Audio)
             if (data->op_code == 2 && self->speaker_ != nullptr) {
                 std::lock_guard<std::mutex> lock(self->audio_mutex_);
-                if (self->audio_queue_.size() < 400) {
-                    std::vector<uint8_t> chunk((uint8_t*)data->data_ptr, (uint8_t*)data->data_ptr + data->data_len);
-                    self->audio_queue_.push(std::move(chunk));
+                size_t to_write = data->data_len;
+                if (self->available_data_ + to_write > self->BUFFER_SIZE) {
+                    ESP_LOGW("gemini_ws", "Audio buffer full, dropping chunk!");
                 } else {
-                    ESP_LOGW("gemini_ws", "Audio queue full, dropping chunk!");
+                    const uint8_t* src = (const uint8_t*)data->data_ptr;
+                    for (size_t i = 0; i < to_write; i++) {
+                        self->audio_buffer_[self->write_idx_] = src[i];
+                        self->write_idx_ = (self->write_idx_ + 1) % self->BUFFER_SIZE;
+                    }
+                    self->available_data_ += to_write;
                 }
             }
             break;
