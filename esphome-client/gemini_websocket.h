@@ -19,7 +19,7 @@ class GeminiWebSocketClient : public Component {
   size_t read_idx_ = 0;
   size_t write_idx_ = 0;
   size_t available_data_ = 0;
-  const size_t BUFFER_SIZE = 1024 * 512; // 512 KB
+  const size_t BUFFER_SIZE = 1024 * 1024 * 4; // 4 MB PSRAM Buffer (hält ~21 Sekunden 48kHz Stereo)
   std::mutex audio_mutex_;
 
  public:
