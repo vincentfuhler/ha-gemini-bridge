@@ -1,0 +1,37 @@
+substitutions:
+  name: "gemini-voice-pe"
+  friendly_name: "Gemini Voice PE"
+  websocket_url: "ws://10.3.0.41:8000/ws" 
+
+esphome:
+  name: "${name}"
+  friendly_name: "${friendly_name}"
+  includes:
+    - gemini_websocket.h
+
+# Offizielle und hochkomplexe Hardware-Konfiguration von Nabu Casa 
+# für den XMOS DSP und TI DAC automatisch herunterladen und einbinden!
+packages:
+  voice_pe_hardware:
+    url: https://github.com/esphome/home-assistant-voice-pe
+    file: home-assistant-voice.yaml
+    refresh: 0d
+
+# WLAN Konfiguration
+wifi:
+  ssid: "HEPTACOM UID_IoT"
+  password: "5yeh)SRM"
+
+# API & OTA für ESPHome
+api:
+ota:
+
+# Unsere Custom Websocket Verbindung zu Gemini
+custom_component:
+  - lambda: |-
+      /*
+        WICHTIG: Sollte ESPHome beim Installieren einen Fehler werfen wie "undeclared identifier 'echo_mic'", 
+        dann heißen die IDs für Mikrofon/Lautsprecher im Voice PE anders (z.B. id(mic) oder id(microphone)).
+      */
+      auto gemini_client = new GeminiWebSocketClient("${websocket_url}", id(echo_mic), id(echo_speaker));
+      return {gemini_client};
