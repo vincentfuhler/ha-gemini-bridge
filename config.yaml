@@ -1,0 +1,25 @@
+name: "Gemini Live Bridge"
+description: "A high-performance bridge service connecting Home Assistant Voice to the Gemini Live API."
+version: "1.0.0"
+slug: "gemini_bridge"
+init: false
+arch:
+  - aarch64
+  - amd64
+  - armhf
+  - armv7
+  - i386
+options:
+  GEMINI_API_KEY: ""
+  GEMINI_MODEL: "models/gemini-2.0-flash-exp"
+  GEMINI_VOICE: "Puck"
+  LOG_LEVEL: "INFO"
+schema:
+  GEMINI_API_KEY: "password"
+  GEMINI_MODEL: "str"
+  GEMINI_VOICE: "str"
+  LOG_LEVEL: "match(^DEBUG|INFO|WARNING|ERROR|CRITICAL$)"
+ports:
+  8000/tcp: 8000
+ports_description:
+  8000/tcp: "Websocket Bridge API"
