@@ -1,0 +1,56 @@
+substitutions:
+  name: "gemini-atom-echo"
+  friendly_name: "Gemini Atom Echo"
+  websocket_url: "ws://192.168.1.100:8000/ws" # IP deiner Gemini Bridge hier eintragen!
+
+esphome:
+  name: "${name}"
+  friendly_name: "${friendly_name}"
+  includes:
+    - gemini_websocket.h
+
+esp32:
+  board: m5stack-atom
+  framework:
+    type: esp-idf
+
+# WLAN Konfiguration
+wifi:
+  ssid: "DEIN_WLAN"
+  password: "DEIN_WLAN_PASSWORT"
+
+# API & OTA für ESPHome
+api:
+ota:
+
+# Status LED des Atom Echo
+light:
+  - platform: fastled_clockless
+    chipset: WS2812B
+    pin: GPIO27
+    num_leds: 1
+    rgb_order: GRB
+    name: "Atom Echo LED"
+
+i2s_audio:
+  i2s_lrclk_pin: GPIO33
+  i2s_bclk_pin: GPIO19
+
+microphone:
+  - platform: i2s_audio
+    id: echo_mic
+    i2s_din_pin: GPIO23
+    adc_type: external
+    pdm: true
+
+speaker:
+  - platform: i2s_audio
+    id: echo_speaker
+    dac_type: external
+    i2s_dout_pin: GPIO22
+    mode: mono
+
+custom_component:
+  - lambda: |-
+      auto gemini_client = new GeminiWebSocketClient("${websocket_url}", id(echo_mic), id(echo_speaker));
+      return {gemini_client};

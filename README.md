@@ -45,12 +45,22 @@ Senden Sie am WebSocket `/ws` die reinen Binärdaten der PCM Chunks.
 4. `.env` anlegen
 5. Server starten: `uvicorn src.main:app --host 0.0.0.0 --port 8000`
 
-## Integration in Home Assistant
+## Integration in Home Assistant & Hardware
 
-Um das Ganze in Home Assistant zu nutzen:
-1. Der Dienst läuft nun unter `ws://<BRIDGE_IP>:8000/ws`
-2. Er kann in Node-RED oder über benutzerdefinierte Wyoming-Bridge-Komponenten angebunden werden, indem Audio-Stream aus HA dorthin als Websocket Payload gesendet wird.
-3. Teil-Implementierung über `custom_components` ist ebenfalls möglich, wenn Sie eine Intercom/Conversation API schreiben, die an diese URL streamt. 
+Um das Ganze in Home Assistant zu nutzen, umgehen wir die klassische Text-Pipeline, damit Gemini Live in Echtzeit den Tonfall und Unterbrechungen (Full Duplex) analysieren kann.
+Der Dienst läuft nun unter `ws://<DEINE_HA_IP>:8000/ws`.
+
+### Hardware Anbindung (Empfohlen: ESPHome & M5Stack Atom Echo)
+Wenn du eine smarte Lautsprecher-Hardware wie den **M5Stack Atom Echo** nutzt, kannst du das Mikrofon direkt mit diesem Websocket verbinden.
+Dafür gibt es im Ordner `esphome-client/` eine vorgefertigte Konfiguration!
+1. Öffne dein ESPHome Dashboard in Home Assistant.
+2. Erstelle ein neues Gerät und kopiere den Inhalt der `esphome-client/atom_echo.yaml` hinein.
+3. Lege die Datei `esphome-client/gemini_websocket.h` in denselben Ordner wie deine ESPHome YAMLs (unter `/config/esphome/`).
+4. Ändere die IP-Adresse in der YAML zu der IP deines Add-ons und flashe das Gerät!
+
+### Software Anbindung (Node-RED etc.)
+- Er kann in Node-RED angebunden werden, indem ein Audio-Stream (16kHz, Mono, PCM 16-bit) dorthin als Websocket Payload gesendet wird.
+- Teil-Implementierung über `custom_components` ist ebenfalls möglich, wenn Sie eine Intercom/Conversation API schreiben, die an diese URL streamt. 
 
 Ein Beispiel für das Scripting über Python-Clients in HA (z.B. AppDaemon / pyscript):
 ```python
