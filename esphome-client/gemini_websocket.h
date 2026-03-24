@@ -1,5 +1,8 @@
 #include "esphome.h"
 #include "esp_websocket_client.h"
+#include <queue>
+#include <mutex>
+#include <vector>
 
 using namespace esphome;
 
@@ -10,6 +13,10 @@ class GeminiWebSocketClient : public Component {
   microphone::Microphone *mic_;
   speaker::Speaker *speaker_;
   std::string url_;
+
+  std::queue<std::vector<uint8_t>> audio_queue_;
+  std::mutex audio_mutex_;
+  size_t current_chunk_offset_ = 0;
 
  public:
   GeminiWebSocketClient(std::string url, microphone::Microphone *mic, speaker::Speaker *speaker)
@@ -39,6 +46,25 @@ class GeminiWebSocketClient : public Component {
     }
   }
 
+  void loop() override {
+    if (this->speaker_ == nullptr) return;
+
+    std::lock_guard<std::mutex> lock(this->audio_mutex_);
+    if (!this->audio_queue_.empty()) {
+        auto &chunk = this->audio_queue_.front();
+        size_t available = chunk.size() - this->current_chunk_offset_;
+        const uint8_t *data_ptr = chunk.data() + this->current_chunk_offset_;
+        
+        size_t written = this->speaker_->play(data_ptr, available);
+        this->current_chunk_offset_ += written;
+
+        if (this->current_chunk_offset_ >= chunk.size()) {
+            this->audio_queue_.pop();
+            this->current_chunk_offset_ = 0;
+        }
+    }
+  }
+
   // Handle incoming WebSocket data (e.g. audio from Gemini)
   static void websocket_event_handler(void *handler_args, esp_event_base_t base, int32_t event_id, void *event_data) {
     auto *self = static_cast<GeminiWebSocketClient*>(handler_args);
@@ -58,14 +84,21 @@ class GeminiWebSocketClient : public Component {
             ESP_LOGW("gemini_ws", "WebSocket Disconnected");
             if (self->speaker_ != nullptr) {
                 self->speaker_->stop();
+                std::lock_guard<std::mutex> lock(self->audio_mutex_);
+                while(!self->audio_queue_.empty()) self->audio_queue_.pop();
+                self->current_chunk_offset_ = 0;
             }
             break;
         case WEBSOCKET_EVENT_DATA:
             // Opcode 2 means Binary Data (Audio)
             if (data->op_code == 2 && self->speaker_ != nullptr) {
-                // Play received PCM chunks (16-bit, 16kHz) directly to I2S speaker
-                // ESP-IDF speakers usually accept raw uint8_t pointers
-                self->speaker_->play((const uint8_t*)data->data_ptr, data->data_len);
+                std::lock_guard<std::mutex> lock(self->audio_mutex_);
+                if (self->audio_queue_.size() < 400) {
+                    std::vector<uint8_t> chunk((uint8_t*)data->data_ptr, (uint8_t*)data->data_ptr + data->data_len);
+                    self->audio_queue_.push(std::move(chunk));
+                } else {
+                    ESP_LOGW("gemini_ws", "Audio queue full, dropping chunk!");
+                }
             }
             break;
     }
