@@ -42,7 +42,8 @@ class Session:
         # Pacing / Flow Control tracking
         self.bytes_sent_in_turn = 0
         self.turn_start_time = None
-        self.last_audio_time = 0.0
+        self.last_speaker_time = 0.0   # Gemini's pacing
+        self.last_audio_time = 0.0     # System watchdog
         
         # Diagnostic Counters
         self.ha_chunks_received = 0
@@ -96,7 +97,7 @@ class Session:
                     # If inactive, we use this audio purely for Wake Word detection!
                     if not self.is_active:
                         if wake_word_engine.process_chunk(pcm_bytes):
-                            await self.activate()
+                            asyncio.create_task(self.activate())
                         continue  # Drop chunk from reaching Gemini
 
                     # 3. Half-Duplex: Suppress mic audio while speaker is playing (+ echo tail)
@@ -241,7 +242,7 @@ class Session:
             # Track audio session timing for real-time pacing
             now = time.time()
             # Detect new Gemini turn: > 1s silence means a fresh response is starting
-            if self.turn_start_time is None or (now - getattr(self, "last_audio_time", 0)) > 1.0:
+            if self.turn_start_time is None or (now - getattr(self, "last_speaker_time", 0)) > 1.0:
                 self.turn_start_time = now
                 self.bytes_sent_in_turn = 0
                 logger.info(f"[Session {self.session_id}] New audio turn started.")
@@ -250,6 +251,7 @@ class Session:
             chunk_duration = len(pcm_bytes) / (self.out_rate * (self.out_depth // 8) * self.out_channels)
             self.speaker_active_until = time.time() + chunk_duration + self.MIC_TAIL_SECS
             
+            self.last_speaker_time = now
             self.last_audio_time = now
             self.bytes_sent_in_turn += len(pcm_bytes)
 
