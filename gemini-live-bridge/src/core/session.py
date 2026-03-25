@@ -113,6 +113,9 @@ class Session:
                     if self.in_rate != 16000:
                         pcm_bytes, _ = audioop.ratecv(pcm_bytes, 2, 1, self.in_rate, 16000, None)
 
+                    # Boost volume by 5.0x (ESP32 I2S mics are notoriously quiet, which starves the Wake Word model)
+                    pcm_bytes = audioop.mul(pcm_bytes, 2, 5.0)
+
                     # 2. Gate: only forward mic audio to Gemini when bridge is active.
                     # If inactive, we use this audio purely for Wake Word detection!
                     if not is_bridge_active():
