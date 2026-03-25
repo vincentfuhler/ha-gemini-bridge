@@ -1,6 +1,7 @@
 import asyncio
 import audioop
 import time
+import wave
 from fastapi import WebSocket
 from websockets.exceptions import ConnectionClosed
 
@@ -92,9 +93,26 @@ class Session:
                     
                     if self.ha_chunks_received == 1:
                         logger.info(f"[Session {self.session_id}] 🎤 First real audio chunk received from ESP32 Microphone!")
+                        try:
+                            self.debug_wav = wave.open("/tmp/debug.wav", "wb")
+                            self.debug_wav.setnchannels(1)
+                            self.debug_wav.setsampwidth(2)
+                            self.debug_wav.setframerate(16000)
+                        except Exception as e:
+                            logger.error(f"Failed to open debug.wav: {e}")
+                            
                     elif self.ha_chunks_received % 50 == 0:
                         out_volume = audioop.rms(pcm_bytes, 2)
                         logger.info(f"[Session {self.session_id}] 🎤 Forwarded {self.ha_chunks_received} microphone chunks to Gemini... (Boosted Out RMS: {out_volume})")
+                        
+                    if hasattr(self, "debug_wav") and self.ha_chunks_received <= 500:
+                        try:
+                            self.debug_wav.writeframes(pcm_bytes)
+                            if self.ha_chunks_received == 500:
+                                self.debug_wav.close()
+                                logger.info(f"[Session {self.session_id}] 💾 Saved 8 seconds of microphone audio to /tmp/debug.wav!")
+                        except Exception as e:
+                            pass
                         
                     if self.in_rate != 16000:
                         pcm_bytes, _ = audioop.ratecv(pcm_bytes, 2, 1, self.in_rate, 16000, None)
