@@ -164,6 +164,30 @@ class GeminiLiveClient:
                     }
                 }
 
+            elif fn_name == "get_devices":
+                domain_filter = args.get("domain")
+                states = await self.ha.get_all_states()
+                devices = []
+                for state in states:
+                    entity_id = state.get("entity_id", "")
+                    domain = entity_id.split(".")[0] if "." in entity_id else ""
+                    
+                    if domain_filter and domain != domain_filter:
+                        continue
+                        
+                    # If no specific domain requested, filter out noisy/internal HA domains
+                    if not domain_filter and domain in ("automation", "script", "zone", "sun", "person", "update", "device_tracker", "binary_sensor"):
+                        continue
+                        
+                    devices.append({
+                        "entity_id": entity_id,
+                        "name": state.get("attributes", {}).get("friendly_name", entity_id),
+                        "state": state.get("state")
+                    })
+                
+                logger.info(f"get_devices returned {len(devices)} entities (domain={domain_filter})")
+                return {"devices": devices, "count": len(devices)}
+
             elif fn_name == "set_climate":
                 entity_id = args["entity_id"]
                 service_data = {"entity_id": entity_id}

@@ -64,6 +64,23 @@ HA_TOOLS = [
                 }
             },
             {
+                "name": "get_devices",
+                "description": (
+                    "Get a list of available Home Assistant devices and entities. "
+                    "Use this to discover what devices exist, their entity IDs, and their current states. "
+                    "You can optionally filter by domain (e.g. 'light', 'switch', 'climate', 'sensor', 'media_player')."
+                ),
+                "parameters": {
+                    "type": "OBJECT",
+                    "properties": {
+                        "domain": {
+                            "type": "STRING",
+                            "description": "Optional: filter by domain (e.g. 'light', 'switch', 'climate')"
+                        }
+                    }
+                }
+            },
+            {
                 "name": "set_climate",
                 "description": "Control a thermostat or climate device (set target temperature, HVAC mode).",
                 "parameters": {
