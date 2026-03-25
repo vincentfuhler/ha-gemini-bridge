@@ -8,29 +8,38 @@ esphome:
   friendly_name: "${friendly_name}"
   includes:
     - gemini_websocket.h
+  on_boot:
+    priority: -100  # Run after all components are initialized
+    then:
+      - lambda: |-
+          // Create the Gemini client ONCE at boot (WebSocket stays persistently connected).
+          // This avoids expensive reconnection latency on every wake word detection.
+          auto *client = new GeminiWebSocketClient("${websocket_url}", id(i2s_mics), id(media_mixing_input));
+          
+          // When the session auto-expires (20s after last Gemini audio), log it.
+          client->on_session_ended_ = []() {
+              ESP_LOGI("gemini_ws", "✅ Session ended. Device is back in idle/wake-word mode.");
+          };
+          
+          App.register_component_(client);
+          client->setup();
+          
+          // Store pointer to global for wake word callback access
+          id(gemini_client_ptr) = (void*)client;
 
-# Offizielle Hardware-Konfiguration von Nabu Casa für das Voice PE laden
+# ─── Official Voice PE Hardware Configuration ─────────────────────────────────
 packages:
   voice_pe_hardware:
     url: https://github.com/esphome/home-assistant-voice-pe
     file: home-assistant-voice.yaml
     refresh: 0d
 
-# WLAN Konfiguration
+# ─── Network ──────────────────────────────────────────────────────────────────
 wifi:
   ssid: "Paul Walter"
   password: "paulwalter"
-  on_connect:
-    - lambda: |-
-        // Wird erst sicher ausgeführt, sobald das WLAN steht!
-        // NOTE: We only pass media_mixing_input — NEVER i2s_audio_speaker.
-        // The official Voice PE firmware manages i2s_audio_speaker exclusively.
-        // Touching it from our code causes a DMA state machine conflict after ~25ms.
-        auto gemini_client = new GeminiWebSocketClient("${websocket_url}", id(i2s_mics), id(media_mixing_input));
-        App.register_component_(gemini_client);
-        gemini_client->setup();
 
-# Standard APIs
+# ─── API / OTA ────────────────────────────────────────────────────────────────
 api:
   encryption:
     key: "C14DR0lU9Ze3QMCUMxfiWurno9BXnNG+3zWwjleSepw="
@@ -38,3 +47,22 @@ api:
 ota:
  - platform: esphome
    password: "16230620a0262c98d2185fe92cc9a61f"
+
+# ─── Global to hold Gemini client pointer ─────────────────────────────────────
+globals:
+  - id: gemini_client_ptr
+    type: void*
+    restore_value: false
+    initial_value: "nullptr"
+
+# ─── Wake Word → Start Gemini Session ─────────────────────────────────────────
+# Override the on_wake_word_detected event from the official YAML to also
+# trigger our Gemini session. The official voice_assistant.start is REPLACED
+# since we don't use HA voice assistant pipeline.
+micro_wake_word:
+  on_wake_word_detected:
+    - lambda: |-
+        if (id(gemini_client_ptr) != nullptr) {
+            auto *client = static_cast<GeminiWebSocketClient*>(id(gemini_client_ptr));
+            client->startSession();
+        }
