@@ -13,6 +13,8 @@ class GeminiWebSocketClient : public Component {
   esp_websocket_client_handle_t client_ = nullptr;
   microphone::Microphone *mic_;
   speaker::Speaker *speaker_;
+  speaker::Speaker *mixer_;
+  speaker::Speaker *i2s_;
   std::string url_;
 
   uint8_t* audio_buffer_ = nullptr;
@@ -29,8 +31,8 @@ class GeminiWebSocketClient : public Component {
   std::function<void()> on_connected_ = nullptr;
   std::function<void()> on_disconnected_ = nullptr;
 
-  GeminiWebSocketClient(std::string url, microphone::Microphone *mic, speaker::Speaker *speaker)
-      : url_(url), mic_(mic), speaker_(speaker) {}
+  GeminiWebSocketClient(const std::string& url, microphone::Microphone *mic = nullptr, speaker::Speaker *speaker = nullptr, speaker::Speaker *mixer = nullptr, speaker::Speaker *i2s = nullptr) 
+      : url_(url), mic_(mic), speaker_(speaker), mixer_(mixer), i2s_(i2s) {}
 
   ~GeminiWebSocketClient() {
       if (this->audio_buffer_ != nullptr) {
@@ -82,9 +84,11 @@ class GeminiWebSocketClient : public Component {
         
         const uint8_t *data_ptr = this->audio_buffer_ + this->read_idx_;
         
-        // Ensure Speaker hasn't aborted due to buffer starvation
-        if (!this->speaker_->is_running()) {
-            ESP_LOGW("gemini_ws", "Speaker pipeline stopped (underrun). Restarting...");
+        // Ensure the entire Speaker pipeline hasn't aborted due to buffer starvation
+        if (!this->speaker_->is_running() || (this->mixer_ && !this->mixer_->is_running()) || (this->i2s_ && !this->i2s_->is_running())) {
+            ESP_LOGW("gemini_ws", "Hardware Speaker pipeline stopped! Forcefully waking Mixer and I2S DAC...");
+            if (this->i2s_) this->i2s_->start();
+            if (this->mixer_) this->mixer_->start();
             this->speaker_->start();
         }
         
@@ -120,6 +124,8 @@ class GeminiWebSocketClient : public Component {
                 // Bridge sends 16-bit 48kHz Stereo PCM directly to the Native Mixer
                 audio::AudioStreamInfo info(16, 2, 48000);
                 self->speaker_->set_audio_stream_info(info);
+                if (self->i2s_) self->i2s_->start();
+                if (self->mixer_) self->mixer_->start();
                 self->speaker_->start();
             }
             break;
