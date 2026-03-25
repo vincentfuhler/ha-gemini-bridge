@@ -93,6 +93,10 @@ class GeminiWebSocketClient : public Component {
     switch (event_id) {
         case WEBSOCKET_EVENT_CONNECTED:
             ESP_LOGI("gemini_ws", "WebSocket Connected to Gemini Bridge!");
+            if (self->mic_ != nullptr) {
+                ESP_LOGI("gemini_ws", "Starting ESP32 Microphone...");
+                self->mic_->start();
+            }
             if (self->speaker_ != nullptr) {
                 // Bridge sends 16-bit 48kHz Stereo PCM directly to hardware mixer's ring buffer
                 audio::AudioStreamInfo info(16, 2, 48000);
@@ -102,6 +106,9 @@ class GeminiWebSocketClient : public Component {
             break;
         case WEBSOCKET_EVENT_DISCONNECTED:
             ESP_LOGW("gemini_ws", "WebSocket Disconnected");
+            if (self->mic_ != nullptr) {
+                self->mic_->stop();
+            }
             if (self->speaker_ != nullptr) {
                 self->speaker_->stop();
                 std::lock_guard<std::mutex> lock(self->audio_mutex_);

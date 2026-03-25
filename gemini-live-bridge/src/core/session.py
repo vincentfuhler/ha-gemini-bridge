@@ -77,6 +77,10 @@ class Session:
                 
                 if message.get("bytes"):
                     pcm_bytes = message["bytes"]
+                    if not getattr(self, "mic_started", False):
+                        logger.info(f"[Session {self.session_id}] Receiving microphone audio from ESP32...")
+                        self.mic_started = True
+                        
                     if self.in_depth != 16:
                         pcm_bytes = audioop.lin2lin(pcm_bytes, self.in_depth // 8, 2)
                     if self.in_rate != 16000:
