@@ -10,11 +10,11 @@ using namespace esphome;
 // Custom ESPHome component that acts as a WebSocket bridge to Gemini
 class GeminiWebSocketClient : public Component {
  protected:
-  esp_websocket_client_handle_t client_ = nullptr;
   microphone::Microphone *mic_;
   speaker::Speaker *speaker_;
-  speaker::Speaker *mixer_;
   speaker::Speaker *i2s_;
+
+  esp_websocket_client_handle_t client_ = nullptr;
   std::string url_;
 
   uint8_t* audio_buffer_ = nullptr;
@@ -31,8 +31,8 @@ class GeminiWebSocketClient : public Component {
   std::function<void()> on_connected_ = nullptr;
   std::function<void()> on_disconnected_ = nullptr;
 
-  GeminiWebSocketClient(const std::string& url, microphone::Microphone *mic = nullptr, speaker::Speaker *speaker = nullptr, speaker::Speaker *mixer = nullptr, speaker::Speaker *i2s = nullptr) 
-      : url_(url), mic_(mic), speaker_(speaker), mixer_(mixer), i2s_(i2s) {}
+  GeminiWebSocketClient(const std::string& url, microphone::Microphone *mic = nullptr, speaker::Speaker *speaker = nullptr, speaker::Speaker *i2s = nullptr) 
+      : url_(url), mic_(mic), speaker_(speaker), i2s_(i2s) {}
 
   ~GeminiWebSocketClient() {
       if (this->audio_buffer_ != nullptr) {
@@ -85,10 +85,9 @@ class GeminiWebSocketClient : public Component {
         const uint8_t *data_ptr = this->audio_buffer_ + this->read_idx_;
         
         // Ensure the entire Speaker pipeline hasn't aborted due to buffer starvation
-        if (!this->speaker_->is_running() || (this->mixer_ && !this->mixer_->is_running()) || (this->i2s_ && !this->i2s_->is_running())) {
-            ESP_LOGW("gemini_ws", "Hardware Speaker pipeline stopped! Forcefully waking Mixer and I2S DAC...");
+        if (!this->speaker_->is_running() || (this->i2s_ && !this->i2s_->is_running())) {
+            ESP_LOGW("gemini_ws", "Hardware Speaker pipeline stopped! Forcefully waking root I2S DAC...");
             if (this->i2s_) this->i2s_->start();
-            if (this->mixer_) this->mixer_->start();
             this->speaker_->start();
         }
         
@@ -125,7 +124,6 @@ class GeminiWebSocketClient : public Component {
                 audio::AudioStreamInfo info(16, 2, 48000);
                 self->speaker_->set_audio_stream_info(info);
                 if (self->i2s_) self->i2s_->start();
-                if (self->mixer_) self->mixer_->start();
                 self->speaker_->start();
             }
             break;
