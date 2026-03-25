@@ -53,13 +53,6 @@ class Session:
         # speaker_active_until = timestamp until which mic should be suppressed.
         self.speaker_active_until = 0.0
         self.MIC_TAIL_SECS = 1.5  # seconds of suppression AFTER audio stops (echo tail)
-        
-        # Debugging: Save first 8 seconds of Gemini output
-        self.out_wav = wave.open("/tmp/debug_out.wav", "wb")
-        self.out_wav.setnchannels(self.out_channels)
-        self.out_wav.setsampwidth(self.out_depth // 8)
-        self.out_wav.setframerate(self.out_rate)
-        self.out_bytes_saved = 0
 
     async def start(self):
         """Starts the session by connecting to Gemini and beginning the duplex stream."""
@@ -111,26 +104,9 @@ class Session:
                         
                     if self.ha_chunks_received == 1:
                         logger.info(f"[Session {self.session_id}] 🎤 First real audio chunk received from ESP32 Microphone!")
-                        try:
-                            self.debug_wav = wave.open("/tmp/debug.wav", "wb")
-                            self.debug_wav.setnchannels(1)
-                            self.debug_wav.setsampwidth(2)
-                            self.debug_wav.setframerate(16000)
-                        except Exception as e:
-                            logger.error(f"Failed to open debug.wav: {e}")
-                            
                     elif self.ha_chunks_received % 50 == 0:
                         out_volume = audioop.rms(pcm_bytes, 2)
-                        logger.info(f"[Session {self.session_id}] 🎤 Forwarded {self.ha_chunks_received} microphone chunks to Gemini... (Mic RMS: {out_volume})")
-                        
-                    if hasattr(self, "debug_wav") and self.ha_chunks_received <= 500:
-                        try:
-                            self.debug_wav.writeframes(pcm_bytes)
-                            if self.ha_chunks_received == 500:
-                                self.debug_wav.close()
-                                logger.info(f"[Session {self.session_id}] 💾 Saved 8 seconds of microphone audio to /tmp/debug.wav!")
-                        except Exception:
-                            pass
+                        logger.debug(f"[Session {self.session_id}] 🎤 Forwarded {self.ha_chunks_received} microphone chunks to Gemini... (Mic RMS: {out_volume})")
                     
                     if self.gemini_client.ws:
                         await self.gemini_client.send_audio_chunk(pcm_bytes)
@@ -221,17 +197,6 @@ class Session:
             if getattr(self, "out_channels", 1) == 2:
                 pcm_bytes = audioop.tostereo(pcm_bytes, self.out_depth // 8, 1, 1)
                 
-            if self.out_wav:
-                try:
-                    self.out_wav.writeframesraw(pcm_bytes)
-                    self.out_bytes_saved += len(pcm_bytes)
-                    if self.out_bytes_saved >= self.out_rate * (self.out_depth // 8) * self.out_channels * 8:
-                        self.out_wav.close()
-                        self.out_wav = None
-                        logger.info(f"[Session {self.session_id}] 💾 Saved 8 seconds of Gemini output to /tmp/debug_out.wav!")
-                except Exception as e:
-                    pass
-                
             # Track audio session timing for real-time pacing
             now = time.time()
             # Detect new Gemini turn: > 1s silence means a fresh response is starting
@@ -265,7 +230,7 @@ class Session:
             if self.gemini_chunks_received == 1:
                 logger.info(f"[Session {self.session_id}] 🔊 First audio response chunk RECEIVED FROM GEMINI!")
             elif self.gemini_chunks_received % 100 == 0:
-                logger.info(f"[Session {self.session_id}] 🔊 Forwarded {self.gemini_chunks_received} audio chunks from Gemini to ESP32...")
+                logger.debug(f"[Session {self.session_id}] 🔊 Forwarded {self.gemini_chunks_received} audio chunks from Gemini to ESP32...")
 
             await self.ha_ws.send_bytes(pcm_bytes)
         except Exception as e:

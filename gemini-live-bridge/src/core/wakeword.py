@@ -70,7 +70,7 @@ class WakeWordEngine:
         if self.chunk_count % 30 == 0:
             max_score = max(prediction.values()) if prediction else 0.0
             if max_score > 0.01:
-                logger.info(f"Wake Word Max Score (last 1s): {max_score:.4f}")
+                logger.debug(f"Wake Word Max Score (last 1s): {max_score:.4f}")
 
         # openwakeword returns prediction scores for all loaded models
         for mdl, score in prediction.items():
