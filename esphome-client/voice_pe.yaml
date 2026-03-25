@@ -23,7 +23,10 @@ wifi:
   on_connect:
     - lambda: |-
         // Wird erst sicher ausgeführt, sobald das WLAN steht!
-        auto gemini_client = new GeminiWebSocketClient("${websocket_url}", id(i2s_mics), id(media_mixing_input), id(i2s_audio_speaker));
+        // NOTE: We only pass media_mixing_input — NEVER i2s_audio_speaker.
+        // The official Voice PE firmware manages i2s_audio_speaker exclusively.
+        // Touching it from our code causes a DMA state machine conflict after ~25ms.
+        auto gemini_client = new GeminiWebSocketClient("${websocket_url}", id(i2s_mics), id(media_mixing_input));
         App.register_component_(gemini_client);
         gemini_client->setup();
 
