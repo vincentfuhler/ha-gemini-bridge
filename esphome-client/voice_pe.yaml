@@ -21,22 +21,22 @@ wifi:
   ssid: "Paul Walter"
   password: "paulwalter"
   on_connect:
-    - lambda: |-
-        if (id(gemini_client_ptr) == nullptr) {
-            auto *client = new GeminiWebSocketClient("${websocket_url}", id(i2s_mics), id(media_mixing_input));
-            client->on_session_ended_ = []() {
-                ESP_LOGI("gemini_ws", "✅ Session ended. Back to wake-word listening.");
-            };
-            App.register_component_(client);
-            client->setup();
-            id(gemini_client_ptr) = (void*)client;
-            ESP_LOGI("gemini_ws", "✅ Gemini client created. Starting microWakeWord...");
-        }
-        // Start microWakeWord directly — the official HA VA state machine is not
-        // running, so we must trigger it ourselves. Called via C++ to avoid
-        // YAML action sequencing issues.
-        id(mww).start();
-        ESP_LOGI("gemini_ws", "🎤 microWakeWord started. Say 'Okay Nabu'!");
+    then:
+      - lambda: |-
+          if (id(gemini_client_ptr) == nullptr) {
+              auto *client = new GeminiWebSocketClient("${websocket_url}", id(i2s_mics), id(media_mixing_input));
+              client->on_session_ended_ = []() {
+                  ESP_LOGI("gemini_ws", "✅ Session ended. Back to wake-word listening.");
+              };
+              App.register_component_(client);
+              client->setup();
+              id(gemini_client_ptr) = (void*)client;
+              ESP_LOGI("gemini_ws", "✅ Gemini client created and WebSocket connecting...");
+          }
+      # Use the official Voice PE idle script — this correctly starts microWakeWord,
+      # sets the idle LED pattern, and all the official startup logic.
+      - delay: 1s
+      - script.execute: va_idle
 
 # ─── API / OTA ────────────────────────────────────────────────────────────────
 api:
