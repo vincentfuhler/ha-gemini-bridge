@@ -1,32 +1,72 @@
 import asyncio
 import base64
 import json
+import os
 import websockets
-from typing import AsyncGenerator, Callable, Any
+from typing import Callable, Any
 
 from src.logging import setup_logger
 from src.config import settings
+from src.gemini.tools import HA_TOOLS
+from src.ha import HomeAssistantClient
 
 logger = setup_logger("gemini_client")
 
+
+def _load_system_prompt() -> str | None:
+    """
+    Load system prompt from the configured file path.
+    Falls back to the bundled default if the user file doesn't exist.
+    """
+    paths = [
+        settings.SYSTEM_PROMPT_FILE,           # /config/gemini_system_prompt.txt (user-editable)
+        "/app/system_prompt.txt",              # Bundled default inside container
+        os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+                     "system_prompt.txt"),     # Dev fallback (repo root)
+    ]
+    for path in paths:
+        if os.path.exists(path):
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    prompt = f.read().strip()
+                    logger.info(f"System prompt loaded from {path} ({len(prompt)} chars)")
+                    return prompt
+            except Exception as e:
+                logger.warning(f"Failed to read system prompt from {path}: {e}")
+    logger.warning("No system prompt file found. Starting without system instruction.")
+    return None
+
+
 class GeminiLiveClient:
     """
-    Client for interacting with the Gemini Live / Multimodal API via WebSockets.
+    Client for the Gemini Live / Multimodal API.
+    Supports:
+    - System prompt (loaded from file)
+    - Function calling for Home Assistant control
+    - Real-time bidirectional audio
     """
     def __init__(self):
         self.api_key = settings.GEMINI_API_KEY
         self.model = settings.GEMINI_MODEL
         self.voice = settings.GEMINI_VOICE
         self.ws: websockets.WebSocketClientProtocol | None = None
-        self.uri = f"wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key={self.api_key}"
+        self.uri = (
+            "wss://generativelanguage.googleapis.com/ws/"
+            "google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent"
+            f"?key={self.api_key}"
+        )
+        # HA client for function call execution
+        self.ha = HomeAssistantClient(settings.HA_URL, settings.HA_TOKEN) \
+            if settings.HA_TOKEN else None
 
     async def connect(self):
-        """Establish the WebSocket connection to Gemini."""
-        logger.info(f"Connecting to Gemini Live API with model {self.model}...")
+        """Establish the WebSocket connection to Gemini and send setup config."""
+        logger.info(f"Connecting to Gemini Live API ({self.model})...")
         self.ws = await websockets.connect(self.uri)
-        
-        # Send initial setup message
-        setup_msg = {
+
+        system_prompt = _load_system_prompt()
+
+        setup_msg: dict = {
             "setup": {
                 "model": self.model,
                 "generationConfig": {
@@ -38,60 +78,120 @@ class GeminiLiveClient:
                             }
                         }
                     }
-                }
+                },
+                # Declare function calling tools
+                "tools": HA_TOOLS,
             }
         }
+
+        # Attach system prompt if available
+        if system_prompt:
+            setup_msg["setup"]["systemInstruction"] = {
+                "parts": [{"text": system_prompt}]
+            }
+
         await self.ws.send(json.dumps(setup_msg))
-        
+
         # Wait for setup completion
         response_raw = await self.ws.recv()
         response = json.loads(response_raw)
         if "setupComplete" in response:
-            logger.info("Gemini setup completed successfully.")
+            logger.info("Gemini setup completed. System prompt and tools active.")
         else:
-            logger.error(f"Failed to complete setup. Response: {response}")
-            raise Exception("Initial setup for Gemini Live failed.")
+            logger.error(f"Setup failed: {response}")
+            raise Exception("Gemini Live initial setup failed.")
 
     async def send_audio_chunk(self, pcm_bytes: bytes):
-        """Send a chunk of raw PCM audio to Gemini."""
+        """Send a raw PCM audio chunk to Gemini."""
         if not self.ws:
             return
-
         b64_audio = base64.b64encode(pcm_bytes).decode("utf-8")
-        msg = {
+        await self.ws.send(json.dumps({
             "realtimeInput": {
-                "mediaChunks": [
-                    {
-                        "mimeType": "audio/pcm;rate=16000",
-                        "data": b64_audio
-                    }
-                ]
+                "mediaChunks": [{"mimeType": "audio/pcm;rate=16000", "data": b64_audio}]
             }
-        }
-        await self.ws.send(json.dumps(msg))
+        }))
 
     async def send_text(self, text: str):
-        """Send a text input message if needed."""
+        """Send a text input to Gemini (for debugging or non-audio sessions)."""
         if not self.ws:
             return
-            
-        msg = {
+        await self.ws.send(json.dumps({
             "clientContent": {
-                "turns": [
-                    {
-                        "role": "user",
-                        "parts": [{"text": text}]
-                    }
-                ],
+                "turns": [{"role": "user", "parts": [{"text": text}]}],
                 "turnComplete": True
             }
-        }
-        await self.ws.send(json.dumps(msg))
+        }))
+
+    async def _execute_tool_call(self, call_id: str, fn_name: str, args: dict) -> dict:
+        """
+        Executes a Gemini function call against Home Assistant and returns the result.
+        """
+        logger.info(f"🔧 Function call: {fn_name}({args})")
+
+        if not self.ha:
+            logger.warning("HA client not configured (HA_TOKEN missing). Cannot execute function calls.")
+            return {"error": "Home Assistant integration not configured. Set HA_URL and HA_TOKEN."}
+
+        try:
+            if fn_name == "control_device":
+                entity_id = args["entity_id"]
+                action = args["action"]
+                domain = entity_id.split(".")[0]
+
+                service_data = {"entity_id": entity_id}
+                if "brightness_pct" in args:
+                    service_data["brightness_pct"] = args["brightness_pct"]
+                if "color_temp_kelvin" in args:
+                    service_data["color_temp_kelvin"] = args["color_temp_kelvin"]
+                if "rgb_color" in args:
+                    service_data["rgb_color"] = args["rgb_color"]
+
+                result = await self.ha.call_service(domain, action, service_data)
+                return result
+
+            elif fn_name == "get_device_state":
+                state = await self.ha.get_state(args["entity_id"])
+                # Return a slimmed-down version for Gemini (avoid context overflow)
+                return {
+                    "entity_id": state.get("entity_id"),
+                    "state": state.get("state"),
+                    "attributes": {
+                        k: v for k, v in state.get("attributes", {}).items()
+                        if k in ("friendly_name", "brightness", "color_temp_kelvin",
+                                 "rgb_color", "temperature", "current_temperature",
+                                 "unit_of_measurement", "device_class")
+                    }
+                }
+
+            elif fn_name == "set_climate":
+                entity_id = args["entity_id"]
+                service_data = {"entity_id": entity_id}
+                if "temperature" in args:
+                    service_data["temperature"] = args["temperature"]
+
+                results = []
+                if "hvac_mode" in args:
+                    results.append(await self.ha.call_service(
+                        "climate", "set_hvac_mode",
+                        {"entity_id": entity_id, "hvac_mode": args["hvac_mode"]}
+                    ))
+                if "temperature" in args:
+                    results.append(await self.ha.call_service(
+                        "climate", "set_temperature", service_data
+                    ))
+                return {"success": True, "results": results}
+
+            else:
+                return {"error": f"Unknown function: {fn_name}"}
+
+        except Exception as e:
+            logger.error(f"Function call {fn_name} failed: {e}")
+            return {"error": str(e)}
 
     async def receive_loop(self, on_audio_chunk: Callable[[bytes], Any]):
         """
-        Continuously listen for responses from Gemini.
-        `on_audio_chunk` is a callback function called when audio data is received.
+        Listen for Gemini responses: audio chunks, text, and function calls.
         """
         if not self.ws:
             return
@@ -99,31 +199,54 @@ class GeminiLiveClient:
         try:
             async for message in self.ws:
                 data = json.loads(message)
-                
-                # Check for serverContent -> modelTurn
+
+                # ── Audio / Text response ────────────────────────────────────
                 if "serverContent" in data:
                     model_turn = data["serverContent"].get("modelTurn")
                     if model_turn:
                         for part in model_turn.get("parts", []):
-                            # Check for text part (could also be used for logs/UI)
                             if "text" in part:
-                                logger.debug(f"Gemini text chunk: {part['text']}")
-                            
-                            # Check for audio part
+                                logger.debug(f"Gemini text: {part['text']}")
+
                             if "inlineData" in part:
-                                mime_type = part["inlineData"].get("mimeType", "")
-                                if mime_type.startswith("audio/pcm"):
-                                    b64_data = part["inlineData"]["data"]
-                                    pcm_bytes = base64.b64decode(b64_data)
-                                    # Call the callback to push the chunk back to Home Assistant
+                                mime = part["inlineData"].get("mimeType", "")
+                                if mime.startswith("audio/pcm"):
+                                    pcm = base64.b64decode(part["inlineData"]["data"])
                                     if asyncio.iscoroutinefunction(on_audio_chunk):
-                                        await on_audio_chunk(pcm_bytes)
+                                        await on_audio_chunk(pcm)
                                     else:
-                                        on_audio_chunk(pcm_bytes)
-                                        
-                    # Determine if turn is complete
+                                        on_audio_chunk(pcm)
+
                     if data["serverContent"].get("turnComplete"):
                         logger.debug("Gemini turn complete.")
+
+                # ── Function Call (tool use) ─────────────────────────────────
+                elif "toolCall" in data:
+                    tool_call = data["toolCall"]
+                    function_calls = tool_call.get("functionCalls", [])
+                    tool_responses = []
+
+                    for fc in function_calls:
+                        call_id = fc.get("id", "")
+                        fn_name = fc.get("name", "")
+                        fn_args = fc.get("args", {})
+
+                        result = await self._execute_tool_call(call_id, fn_name, fn_args)
+                        logger.info(f"🔧 Function {fn_name} result: {result}")
+
+                        tool_responses.append({
+                            "id": call_id,
+                            "name": fn_name,
+                            "response": {"output": result}
+                        })
+
+                    # Send all results back to Gemini
+                    if tool_responses:
+                        await self.ws.send(json.dumps({
+                            "toolResponse": {
+                                "functionResponses": tool_responses
+                            }
+                        }))
 
         except websockets.exceptions.ConnectionClosed as e:
             logger.warning(f"Gemini connection closed: {e}")
@@ -131,7 +254,7 @@ class GeminiLiveClient:
             logger.error(f"Error in Gemini receive loop: {e}")
 
     async def close(self):
-        """Close the WebSocket connection."""
+        """Close the Gemini WebSocket connection."""
         if self.ws:
             await self.ws.close()
             self.ws = None

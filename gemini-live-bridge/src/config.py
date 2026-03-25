@@ -14,16 +14,24 @@ if os.path.exists(options_path):
         print(f"Failed to load /data/options.json: {e}")
 
 class Settings(BaseSettings):
+    # Gemini
     GEMINI_API_KEY: str
-    GEMINI_MODEL: str = "models/gemini-2.5-flash-live-preview" # default model supporting Live API
-    GEMINI_VOICE: str = "Puck" # Optional Voice name: Aoede, Charon, Fenrir, Kore, Puck
+    GEMINI_MODEL: str = "models/gemini-2.5-flash-live-preview"
+    GEMINI_VOICE: str = "Puck"  # Aoede, Charon, Fenrir, Kore, Puck
 
+    # Home Assistant API (for function calling)
+    HA_URL: str = "http://supervisor/core"   # Default inside HA addon
+    HA_TOKEN: str = ""                        # Long-lived access token
+
+    # System prompt file (editable by user in /config/)
+    SYSTEM_PROMPT_FILE: str = "/config/gemini_system_prompt.txt"
+
+    # Server
     HOST: str = "0.0.0.0"
     PORT: int = 8000
     LOG_LEVEL: str = "INFO"
 
-    # Audio details for Home Assistant integration
-    # Gemini expects 16kHz PCM audio or similar depending on the exact format provided.
+    # Audio
     SAMPLE_RATE: int = 16000
     CHANNELS: int = 1
 
