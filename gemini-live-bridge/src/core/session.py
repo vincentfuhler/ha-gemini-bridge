@@ -163,33 +163,35 @@ class Session:
                 except Exception as e:
                     pass
                 
+            # Track audio session timing for real-time pacing
             now = time.time()
-            # If it's been more than 2 seconds since the last chunk, treat it as a new turn!
-            if self.turn_start_time is None or (now - getattr(self, "last_audio_time", 0)) > 2.0:
+            # Detect new Gemini turn: > 1s silence means a fresh response is starting
+            if self.turn_start_time is None or (now - getattr(self, "last_audio_time", 0)) > 1.0:
                 self.turn_start_time = now
                 self.bytes_sent_in_turn = 0
+                logger.info(f"[Session {self.session_id}] New audio turn started.")
 
             self.last_audio_time = now
             self.bytes_sent_in_turn += len(pcm_bytes)
-            
-            # Pacing Math:
+
+            # Real-time Pacing (Leaky Bucket):
+            # The ESP32 PSRAM buffer is only 96,000 bytes (~0.5s of audio).
+            # Gemini sends bursts faster than real-time. We must pace to prevent drops.
             bytes_per_sec = self.out_rate * (self.out_depth // 8) * self.out_channels
             audio_seconds_sent = self.bytes_sent_in_turn / bytes_per_sec
-            elapsed_time = now - self.turn_start_time
-            
-            # If we've sent more than 10 seconds of audio AHEAD of real time, pause to let ESP32 catch up!
-            buffer_ahead = audio_seconds_sent - elapsed_time
-            if buffer_ahead > 10.0:
-                pause_time = buffer_ahead - 5.0
-                logger.info(f"[Session {self.session_id}] ⏳ Pacing: ESP32 buffer is {buffer_ahead:.1f}s ahead. Pausing Gemini for {pause_time:.1f}s...")
-                await asyncio.sleep(pause_time) # Pause so it drains down to 5 seconds
-                
+            elapsed_time = time.time() - self.turn_start_time  # Recalculate after potential sleep
+
+            # Keep at most 0.3 seconds ahead of real time (= 57,600 bytes in buffer)
+            buffer_ahead_secs = audio_seconds_sent - elapsed_time
+            if buffer_ahead_secs > 0.3:
+                await asyncio.sleep(buffer_ahead_secs - 0.1)  # Sleep down to 0.1s ahead
+
             self.gemini_chunks_received += 1
             if self.gemini_chunks_received == 1:
                 logger.info(f"[Session {self.session_id}] 🔊 First audio response chunk RECEIVED FROM GEMINI!")
-            elif self.gemini_chunks_received % 50 == 0:
+            elif self.gemini_chunks_received % 100 == 0:
                 logger.info(f"[Session {self.session_id}] 🔊 Forwarded {self.gemini_chunks_received} audio chunks from Gemini to ESP32...")
-                
+
             await self.ha_ws.send_bytes(pcm_bytes)
         except Exception as e:
             logger.error(f"[Session {self.session_id}] Error sending to HA: {e}")
