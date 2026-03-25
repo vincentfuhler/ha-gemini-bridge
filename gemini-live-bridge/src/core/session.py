@@ -86,7 +86,8 @@ class Session:
                     if self.ha_chunks_received == 1:
                         logger.info(f"[Session {self.session_id}] 🎤 First real audio chunk received from ESP32 Microphone!")
                     elif self.ha_chunks_received % 50 == 0:
-                        logger.info(f"[Session {self.session_id}] 🎤 Forwarded {self.ha_chunks_received} microphone chunks to Gemini...")
+                        volume = audioop.rms(pcm_bytes, self.in_depth // 8) if self.in_depth in [8, 16, 32] else 0
+                        logger.info(f"[Session {self.session_id}] 🎤 Forwarded {self.ha_chunks_received} microphone chunks to Gemini... (Mic Volume RMS: {volume})")
                         
                     if self.in_depth != 16:
                         pcm_bytes = audioop.lin2lin(pcm_bytes, self.in_depth // 8, 2)
