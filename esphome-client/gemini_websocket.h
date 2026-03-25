@@ -20,8 +20,12 @@ class GeminiWebSocketClient : public Component {
   uint8_t* audio_buffer_ = nullptr;
   size_t read_idx_ = 0;
   size_t write_idx_ = 0;
-  size_t available_data_ = 0;
-  const size_t BUFFER_SIZE = 1024 * 1024 * 4; // 4 MB PSRAM Buffer (hält ~21 Sekunden 48kHz Stereo)
+  size_t avail_len_ = 0;
+  const size_t BUFFER_SIZE = 96000; // Large buffer for stability
+  
+  uint32_t total_bytes_received_ = 0;
+  uint32_t total_bytes_played_ = 0;
+  uint32_t chunk_counter_ = 0;
   std::mutex audio_mutex_;
   
   bool first_audio_received_ = false;
@@ -75,11 +79,11 @@ class GeminiWebSocketClient : public Component {
     if (this->speaker_ == nullptr) return;
 
     std::lock_guard<std::mutex> lock(this->audio_mutex_);
-    if (this->available_data_ > 0) {
+    if (this->avail_len_ > 0) {
         // Write the largest contiguous chunk possible
         size_t contiguous_avail = this->BUFFER_SIZE - this->read_idx_;
-        if (contiguous_avail > this->available_data_) {
-            contiguous_avail = this->available_data_;
+        if (contiguous_avail > this->avail_len_) {
+            contiguous_avail = this->avail_len_;
         }
         
         const uint8_t *data_ptr = this->audio_buffer_ + this->read_idx_;
@@ -92,6 +96,11 @@ class GeminiWebSocketClient : public Component {
         }
         
         size_t written = this->speaker_->play(data_ptr, contiguous_avail);
+        this->total_bytes_played_ += written;
+        
+        if (written < contiguous_avail) {
+            ESP_LOGW("gemini_ws", "Mixer Buffer Pressure: Provided %d bytes, speaker accepted %d bytes.", contiguous_avail, written);
+        }
         
         if (written > 0) {
             if (!this->first_audio_played_) {
@@ -99,8 +108,8 @@ class GeminiWebSocketClient : public Component {
                 ESP_LOGI("gemini_ws", "🔊 SUCCESS: Hardware Speaker consumed its first bytes! Playback is physically starting!");
             }
             this->read_idx_ = (this->read_idx_ + written) % this->BUFFER_SIZE;
-            this->available_data_ -= written;
-            ESP_LOGV("gemini_ws", "Speaker consumed %d bytes (Remaining: %d)", written, this->available_data_);
+            this->avail_len_ -= written;
+            ESP_LOGV("gemini_ws", "Speaker consumed %d bytes (Remaining: %d)", written, this->avail_len_);
         }
     }
   }
@@ -115,13 +124,25 @@ class GeminiWebSocketClient : public Component {
             ESP_LOGI("gemini_ws", "WebSocket Connected to Gemini Bridge!");
             self->first_audio_received_ = false;
             self->first_audio_played_ = false;
+            // Clear buffer on new connection
+            if (self->audio_buffer_ != nullptr) {
+                self->read_idx_ = 0;
+                self->write_idx_ = 0;
+                self->avail_len_ = 0;
+            }
+            self->total_bytes_received_ = 0;
+            self->total_bytes_played_ = 0;
+            self->chunk_counter_ = 0;
+            
+            if (self->on_connected_) self->on_connected_();
+            
             if (self->mic_ != nullptr) {
                 ESP_LOGI("gemini_ws", "Starting ESP32 Microphone...");
                 self->mic_->start();
             }
             if (self->speaker_ != nullptr) {
-                // Bridge sends 16-bit 48kHz Stereo PCM directly to the Native Mixer
-                audio::AudioStreamInfo info(16, 2, 48000);
+                // Bridge sends 32-bit 48kHz Stereo PCM to directly match Voice PE DAC hardware constraints!
+                audio::AudioStreamInfo info(32, 2, 48000);
                 self->speaker_->set_audio_stream_info(info);
                 if (self->i2s_) self->i2s_->start();
                 self->speaker_->start();
@@ -137,28 +158,37 @@ class GeminiWebSocketClient : public Component {
                 std::lock_guard<std::mutex> lock(self->audio_mutex_);
                 self->read_idx_ = 0;
                 self->write_idx_ = 0;
-                self->available_data_ = 0;
+                self->avail_len_ = 0;
             }
             break;
         case WEBSOCKET_EVENT_DATA:
             // Opcode 2 means Binary Data (Audio)
             if (data->op_code == 2 && self->speaker_ != nullptr) {
-                if (!self->first_audio_received_) {
-                    self->first_audio_received_ = true;
-                    ESP_LOGI("gemini_ws", "🔊 SUCCESS: ESP32 RECEIVED THE FIRST AUDIO RESPONSE CHUNK FROM BRIDGE!");
-                }
                 std::lock_guard<std::mutex> lock(self->audio_mutex_);
                 size_t to_write = data->data_len;
-                ESP_LOGD("gemini_ws", "Received Binary Audio Chunk: %d bytes", to_write);
-                if (self->available_data_ + to_write > self->BUFFER_SIZE) {
-                    ESP_LOGW("gemini_ws", "Audio buffer full, dropping chunk!");
+                // Mute this ultra-verbose chunk log, we will summarize progress instead!
+                // ESP_LOGD("gemini_ws", "Received Binary Audio Chunk: %d bytes", to_write);
+                
+                if (self->avail_len_ + to_write > self->BUFFER_SIZE) {
+                    ESP_LOGW("gemini_ws", "Audio buffer OVERFLOW! Dropping incoming audio chunks from Bridge.");
                 } else {
                     const uint8_t* src = (const uint8_t*)data->data_ptr;
                     for (size_t i = 0; i < to_write; i++) {
                         self->audio_buffer_[self->write_idx_] = src[i];
                         self->write_idx_ = (self->write_idx_ + 1) % self->BUFFER_SIZE;
                     }
-                    self->available_data_ += to_write;
+                    self->avail_len_ += to_write;
+                    
+                    self->chunk_counter_++;
+                    self->total_bytes_received_ += to_write;
+                    
+                    if (!self->first_audio_received_) {
+                        self->first_audio_received_ = true;
+                        ESP_LOGI("gemini_ws", "🔊 SUCCESS: ESP32 RECEIVED THE FIRST AUDIO RESPONSE CHUNK FROM BRIDGE! (%d bytes)", to_write);
+                    } else if (self->chunk_counter_ % 50 == 0) {
+                        ESP_LOGI("gemini_ws", "Audio Stream Progress: Received %u bytes, Played %u bytes (Chunk #%u)", 
+                                 self->total_bytes_received_, self->total_bytes_played_, self->chunk_counter_);
+                    }
                 }
             }
             break;
