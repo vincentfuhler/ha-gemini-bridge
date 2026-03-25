@@ -141,9 +141,9 @@ class GeminiWebSocketClient : public Component {
                 self->mic_->start();
             }
             if (self->speaker_ != nullptr) {
-                // Bridge MUST send 16-bit 48kHz Stereo PCM to satisfy the restrictive ESPHome Native Mixer!
-                audio::AudioStreamInfo info(16, 2, 48000);
-                self->speaker_->set_audio_stream_info(info);
+                // DO NOT call set_audio_stream_info! Calling it cascades into the hardware DAC and immediately
+                // bricks the ESP-IDF I2S driver because it conflicts with the physical 32-bit pin layouts!
+                // We simply push raw 16-bit 48kHz Stereo bytes directly into the Mixer's memory ringbuffer.
                 if (self->i2s_) self->i2s_->start();
                 self->speaker_->start();
             }
