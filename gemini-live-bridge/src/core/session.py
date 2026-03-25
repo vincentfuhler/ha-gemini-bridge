@@ -7,6 +7,7 @@ from websockets.exceptions import ConnectionClosed
 
 from src.logging import setup_logger
 from src.gemini.client import GeminiLiveClient
+from src.api.routes import is_bridge_active
 
 logger = setup_logger("session_manager")
 
@@ -102,6 +103,11 @@ class Session:
                     pcm_bytes = message["bytes"]
                     
                     self.ha_chunks_received += 1
+
+                    # Gate: only forward mic audio to Gemini when bridge is active.
+                    # Toggle via POST /api/activate or /api/deactivate from HA.
+                    if not is_bridge_active():
+                        continue  # Drop this chunk -- bridge is inactive
 
                     # Half-Duplex: Suppress mic audio while speaker is playing (+ echo tail)
                     if time.time() < self.speaker_active_until:

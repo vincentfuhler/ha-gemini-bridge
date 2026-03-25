@@ -8,24 +8,6 @@ esphome:
   friendly_name: "${friendly_name}"
   includes:
     - gemini_websocket.h
-  on_boot:
-    priority: -500
-    then:
-      - lambda: |-
-          if (id(gemini_client_ptr) == nullptr) {
-              // No emoji in ESP_LOGI! Emoji causes silent drops in some ESP-IDF versions.
-              ESP_LOGI("gemini_ws", "[on_boot] Creating Gemini client...");
-              auto *client = new GeminiWebSocketClient("${websocket_url}", id(i2s_mics), id(media_mixing_input));
-              client->on_session_ended_ = []() {
-                  ESP_LOGI("gemini_ws", "[session] Ended. Call HA button or say wake word to restart.");
-              };
-              App.register_component_(client);
-              client->setup();
-              id(gemini_client_ptr) = (void*)client;
-              ESP_LOGI("gemini_ws", "[on_boot] Gemini client created. Waiting for trigger.");
-          }
-      - delay: 3s
-      - script.execute: va_idle
 
 # ─── Official Voice PE Hardware Configuration ─────────────────────────────────
 packages:
@@ -38,6 +20,14 @@ packages:
 wifi:
   ssid: "Paul Walter"
   password: "paulwalter"
+  on_connect:
+    - lambda: |-
+        if (id(gemini_client_ptr) == nullptr) {
+            auto *client = new GeminiWebSocketClient("${websocket_url}", id(i2s_mics), id(media_mixing_input));
+            App.register_component_(client);
+            client->setup();
+            id(gemini_client_ptr) = (void*)client;
+        }
 
 # ─── API / OTA ────────────────────────────────────────────────────────────────
 api:
@@ -48,47 +38,9 @@ ota:
  - platform: esphome
    password: "16230620a0262c98d2185fe92cc9a61f"
 
-# ─── Global to hold Gemini client pointer ─────────────────────────────────────
+# ─── Global ───────────────────────────────────────────────────────────────────
 globals:
   - id: gemini_client_ptr
     type: void*
     restore_value: false
     initial_value: "nullptr"
-
-# ─── Template Buttons → exposed to Home Assistant via API ─────────────────────
-# These work 100% reliably regardless of YAML package merging issues.
-# Trigger "Start Gemini Session" from HA dashboard, automation, or NFC tag.
-button:
-  - platform: template
-    name: "Start Gemini Session"
-    id: gemini_start_btn
-    on_press:
-      - lambda: |-
-          ESP_LOGI("gemini_ws", "[btn] Start Gemini Session pressed.");
-          if (id(gemini_client_ptr) != nullptr) {
-              auto *client = static_cast<GeminiWebSocketClient*>(id(gemini_client_ptr));
-              client->startSession();
-          } else {
-              ESP_LOGW("gemini_ws", "[btn] Gemini client not ready yet!");
-          }
-
-  - platform: template
-    name: "Stop Gemini Session"
-    id: gemini_stop_btn
-    on_press:
-      - lambda: |-
-          ESP_LOGI("gemini_ws", "[btn] Stop Gemini Session pressed.");
-          if (id(gemini_client_ptr) != nullptr) {
-              auto *client = static_cast<GeminiWebSocketClient*>(id(gemini_client_ptr));
-              client->stopSession();
-          }
-
-# ─── Wake Word → Start Gemini Session ─────────────────────────────────────────
-micro_wake_word:
-  on_wake_word_detected:
-    - lambda: |-
-        ESP_LOGI("gemini_ws", "[wake_word] Detected! Starting Gemini session.");
-        if (id(gemini_client_ptr) != nullptr) {
-            auto *client = static_cast<GeminiWebSocketClient*>(id(gemini_client_ptr));
-            client->startSession();
-        }
