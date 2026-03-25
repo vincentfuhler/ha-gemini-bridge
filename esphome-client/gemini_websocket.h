@@ -78,10 +78,20 @@ class GeminiWebSocketClient : public Component {
         }
         
         const uint8_t *data_ptr = this->audio_buffer_ + this->read_idx_;
+        
+        // Ensure Speaker hasn't aborted due to buffer starvation
+        if (!this->speaker_->is_running()) {
+            ESP_LOGW("gemini_ws", "Speaker pipeline stopped (underrun). Restarting...");
+            this->speaker_->start();
+        }
+        
         size_t written = this->speaker_->play(data_ptr, contiguous_avail);
         
-        this->read_idx_ = (this->read_idx_ + written) % this->BUFFER_SIZE;
-        this->available_data_ -= written;
+        if (written > 0) {
+            this->read_idx_ = (this->read_idx_ + written) % this->BUFFER_SIZE;
+            this->available_data_ -= written;
+            ESP_LOGV("gemini_ws", "Speaker consumed %d bytes (Remaining: %d)", written, this->available_data_);
+        }
     }
   }
 
@@ -122,6 +132,7 @@ class GeminiWebSocketClient : public Component {
             if (data->op_code == 2 && self->speaker_ != nullptr) {
                 std::lock_guard<std::mutex> lock(self->audio_mutex_);
                 size_t to_write = data->data_len;
+                ESP_LOGD("gemini_ws", "Received Binary Audio Chunk: %d bytes", to_write);
                 if (self->available_data_ + to_write > self->BUFFER_SIZE) {
                     ESP_LOGW("gemini_ws", "Audio buffer full, dropping chunk!");
                 } else {
