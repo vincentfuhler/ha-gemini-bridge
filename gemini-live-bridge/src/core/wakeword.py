@@ -43,6 +43,15 @@ class WakeWordEngine:
         except Exception as e:
             logger.error(f"Failed to load Wake Word engine: {e}")
             
+    def reset(self):
+        """Clears the internal audio feature buffers to prevent ghost activations."""
+        if self.is_loaded and self.model:
+            try:
+                self.model.reset()
+                logger.debug("Wake Word model internal buffers reset.")
+            except AttributeError:
+                pass
+            
     def process_chunk(self, pcm_data: bytes) -> bool:
         """
         Processes a chunk of 16kHz 16-bit mono audio.

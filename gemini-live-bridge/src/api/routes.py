@@ -2,6 +2,7 @@ from fastapi import APIRouter
 from fastapi.responses import FileResponse
 import os
 import logging
+from src.core.wakeword import wake_word_engine
 
 logger = logging.getLogger("routes")
 router = APIRouter()
@@ -18,6 +19,8 @@ def is_bridge_active() -> bool:
 def set_bridge_active(state: bool):
     global _bridge_active
     _bridge_active = state
+    if not state:
+        wake_word_engine.reset()  # Prevent ghost activations when returning to sleep mode
     logger.info(f"Bridge active state internally set to: {state}")
 
 
@@ -41,6 +44,7 @@ async def deactivate():
     """Deactivate the bridge — mic audio is received but discarded."""
     global _bridge_active
     _bridge_active = False
+    wake_word_engine.reset()  # Prevent ghost activations from stale audio clips
     logger.info("Bridge DEACTIVATED. Mic audio will be discarded.")
     return {"success": True, "bridge_active": False}
 
