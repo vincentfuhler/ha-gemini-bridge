@@ -98,8 +98,8 @@ class GeminiWebSocketClient : public Component {
                 self->mic_->start();
             }
             if (self->speaker_ != nullptr) {
-                // Bridge sends 32-bit 48kHz Stereo PCM directly to hardware mixer's ring buffer
-                audio::AudioStreamInfo info(32, 2, 48000);
+                // Bridge sends 16-bit 24kHz Mono PCM (Native Gemini output) directly to the ESPHome Resampler
+                audio::AudioStreamInfo info(16, 1, 24000);
                 self->speaker_->set_audio_stream_info(info);
                 self->speaker_->start();
             }

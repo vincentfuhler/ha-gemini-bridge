@@ -1,7 +1,7 @@
 substitutions:
   name: "gemini-voice-pe"
   friendly_name: "Gemini Voice PE"
-  websocket_url: "ws://10.3.0.41:8000/ws?in_depth=32&in_channels=2&in_rate=16000&out_depth=32&out_rate=48000&out_channels=2"
+  websocket_url: "ws://10.3.0.41:8000/ws?in_depth=32&in_channels=2&in_rate=16000&out_depth=16&out_rate=24000&out_channels=1"
 
 esphome:
   name: "${name}"
@@ -23,7 +23,7 @@ wifi:
   on_connect:
     - lambda: |-
         // Wird erst sicher ausgeführt, sobald das WLAN steht!
-        auto gemini_client = new GeminiWebSocketClient("${websocket_url}", id(i2s_mics), id(media_mixing_input));
+        auto gemini_client = new GeminiWebSocketClient("${websocket_url}", id(i2s_mics), id(announcement_resampling_speaker));
         gemini_client->setup();
 
 # Standard APIs
