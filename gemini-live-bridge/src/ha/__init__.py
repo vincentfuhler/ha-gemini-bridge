@@ -54,4 +54,7 @@ class HomeAssistantClient:
             async with session.get(url, headers=self.headers) as resp:
                 if resp.status == 200:
                     return await resp.json()
-                return []
+                else:
+                    error = await resp.text()
+                    logger.error(f"HA get_all_states failed: {resp.status} {error}")
+                    return []
