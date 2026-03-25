@@ -141,8 +141,8 @@ class GeminiWebSocketClient : public Component {
                 self->mic_->start();
             }
             if (self->speaker_ != nullptr) {
-                // Bridge sends 32-bit 48kHz Stereo PCM to directly match Voice PE DAC hardware constraints!
-                audio::AudioStreamInfo info(32, 2, 48000);
+                // Bridge MUST send 16-bit 48kHz Stereo PCM to satisfy the restrictive ESPHome Native Mixer!
+                audio::AudioStreamInfo info(16, 2, 48000);
                 self->speaker_->set_audio_stream_info(info);
                 if (self->i2s_) self->i2s_->start();
                 self->speaker_->start();
