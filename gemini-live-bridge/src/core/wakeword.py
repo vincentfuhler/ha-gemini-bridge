@@ -19,6 +19,7 @@ class WakeWordEngine:
             
         try:
             from openwakeword.model import Model
+            from openwakeword.utils import download_models
             
             target = settings.WAKE_WORD
             logger.info(f"Loading openwakeword model: {target}")
@@ -29,6 +30,8 @@ class WakeWordEngine:
                 logger.info(f"Found custom tflite model at {target_path}")
                 self.model = Model(wakeword_models=[target_path], inference_framework="tflite")
             else:
+                logger.info(f"Downloading required built-in models if missing from pip package...")
+                download_models()
                 logger.info(f"Using built-in openwakeword model: {target}")
                 self.model = Model(wakeword_models=[target], inference_framework="onnx")
                 
