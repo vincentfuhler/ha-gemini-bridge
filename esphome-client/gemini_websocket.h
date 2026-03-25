@@ -67,14 +67,19 @@ class GeminiWebSocketClient : public Component {
         }
 
         // Start media_mixing_input if not already done.
-        // DO NOT touch i2s_audio_speaker — the official Voice PE firmware manages it!
+        // CRITICAL: set_audio_stream_info MUST be called BEFORE start()!
+        // Without it, the Mixer has no format info and configures i2s_audio_speaker
+        // with garbage settings, causing the "Audio stream settings not compatible" crash.
+        // We set 16-bit here — the Mixer internally upscales 16->32 bit for the hardware.
+        // DO NOT set 32-bit here — Mixer's source speakers only support 16-bit!
         if (!self->speaker_started_) {
-            ESP_LOGI("gemini_ws", "[PlaybackTask] Starting media_mixing_input (is_running=%s)...",
-                     self->speaker_->is_running() ? "yes" : "no");
+            ESP_LOGI("gemini_ws", "[PlaybackTask] Setting stream info + starting media_mixing_input...");
+            audio::AudioStreamInfo stream_info(16, 2, 48000);
+            self->speaker_->set_audio_stream_info(stream_info);
             self->speaker_->start();
             vTaskDelay(pdMS_TO_TICKS(100));
             self->speaker_started_ = true;
-            ESP_LOGI("gemini_ws", "[PlaybackTask] media_mixing_input start() called. is_running=%s",
+            ESP_LOGI("gemini_ws", "[PlaybackTask] media_mixing_input started. is_running=%s",
                      self->speaker_->is_running() ? "YES" : "NO");
         }
 
