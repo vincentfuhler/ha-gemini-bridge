@@ -11,26 +11,30 @@ HA_TOOLS = [
             {
                 "name": "control_device",
                 "description": (
-                    "Turn on, turn off, or toggle a Home Assistant device such as a light, "
-                    "switch, fan, or cover. Use entity IDs exactly as they appear in Home Assistant "
-                    "(e.g. 'light.living_room', 'switch.coffee_maker'). "
-                    "For lights you can optionally set brightness and color."
+                    "Execute a service/action on a Home Assistant device. "
+                    "Use entity IDs exactly as they appear in HA. "
+                    "Standard actions: 'turn_on', 'turn_off', 'toggle'. "
+                    "For covers/blinds/shutters: 'open_cover', 'close_cover', 'stop_cover', 'set_cover_position'. "
+                    "For buttons: 'press'. For media players: 'media_play_pause', 'volume_up', 'volume_down'."
                 ),
                 "parameters": {
                     "type": "OBJECT",
                     "properties": {
                         "entity_id": {
                             "type": "STRING",
-                            "description": "The Home Assistant entity ID, e.g. 'light.living_room'"
+                            "description": "The Home Assistant entity ID, e.g. 'light.living_room' or 'cover.shelly_window'"
                         },
                         "action": {
                             "type": "STRING",
-                            "enum": ["turn_on", "turn_off", "toggle"],
-                            "description": "The action to perform"
+                            "description": "The action/service to execute (turn_on, turn_off, toggle, open_cover, close_cover, set_cover_position, press, etc)"
                         },
                         "brightness_pct": {
                             "type": "NUMBER",
                             "description": "Optional: light brightness in percent (0-100)"
+                        },
+                        "position": {
+                            "type": "NUMBER",
+                            "description": "Optional: position for covers/blinds (0-100)"
                         },
                         "color_temp_kelvin": {
                             "type": "NUMBER",

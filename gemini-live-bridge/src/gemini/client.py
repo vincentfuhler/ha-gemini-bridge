@@ -146,6 +146,8 @@ class GeminiLiveClient:
                     service_data["color_temp_kelvin"] = args["color_temp_kelvin"]
                 if "rgb_color" in args:
                     service_data["rgb_color"] = args["rgb_color"]
+                if "position" in args:
+                    service_data["position"] = args["position"]
 
                 result = await self.ha.call_service(domain, action, service_data)
                 return result
