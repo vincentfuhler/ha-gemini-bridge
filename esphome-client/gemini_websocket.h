@@ -34,6 +34,7 @@ class GeminiWebSocketClient : public Component {
   bool speaker_started_ = false;
 
   TaskHandle_t playback_task_handle_ = nullptr;
+  uint32_t last_connected_time_ = 0;
 
  public:
   GeminiWebSocketClient(const std::string& url, microphone::Microphone *mic = nullptr,
@@ -133,9 +134,24 @@ class GeminiWebSocketClient : public Component {
         mic_->start();
         ESP_LOGI("gemini_ws", "Microphone started. Streaming audio to bridge.");
     }
+    last_connected_time_ = millis();
   }
 
-  void loop() override {}
+  void loop() override {
+      if (client_ == nullptr) return;
+
+      if (esp_websocket_client_is_connected(client_)) {
+          last_connected_time_ = millis();
+      } else {
+          uint32_t now = millis();
+          if (now - last_connected_time_ > 5000) {
+              ESP_LOGI("gemini_ws", "[Watchdog] WS disconnected for 5s. Forcing reconnect...");
+              esp_websocket_client_stop(client_);
+              esp_websocket_client_start(client_);
+              last_connected_time_ = now; // wait another 5s before retrying
+          }
+      }
+  }
 
   // ─── WEBSOCKET EVENT HANDLER ──────────────────────────────────────────────
 
@@ -150,8 +166,14 @@ class GeminiWebSocketClient : public Component {
             break;
 
         case WEBSOCKET_EVENT_DISCONNECTED:
-            ESP_LOGW("gemini_ws", "[WS] Disconnected. Auto-reconnecting...");
+            ESP_LOGW("gemini_ws", "[WS] Disconnected. Waiting for watchdog to reconnect...");
             self->speaker_started_ = false;
+            {
+                std::lock_guard<std::mutex> lock(self->audio_mutex_);
+                self->avail_len_ = 0;
+                self->read_idx_ = 0;
+                self->write_idx_ = 0;
+            }
             break;
 
         case WEBSOCKET_EVENT_DATA:
