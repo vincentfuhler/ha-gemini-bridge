@@ -21,8 +21,12 @@ class Session:
         self.tasks: list[asyncio.Task] = []
         
         q = websocket.query_params
+        
+        # Audio parameters from URL query string
         self.in_rate = int(q.get("in_rate", 16000))
         self.in_depth = int(q.get("in_depth", 16))
+        self.in_channels = int(q.get("in_channels", 1)) # Added in_channels parsing
+        
         self.out_rate = int(q.get("out_rate", 24000))
         self.out_depth = int(q.get("out_depth", 16))
         self.out_channels = int(q.get("out_channels", 1))
@@ -84,6 +88,12 @@ class Session:
                     pcm_bytes = message["bytes"]
                     
                     self.ha_chunks_received += 1
+                        
+                    # Hardware DSP (XMOS XU316) provides 32-bit Stereo. 
+                    # L-channel is the Clean Processed Voice, R-channel is the internal Echo Reference.
+                    # We MUST extract the Left channel and discard the Right.
+                    if self.in_channels == 2:
+                        pcm_bytes = audioop.tomono(pcm_bytes, self.in_depth // 8, 1.0, 0.0)
                         
                     if self.in_depth != 16:
                         pcm_bytes = audioop.lin2lin(pcm_bytes, self.in_depth // 8, 2)
