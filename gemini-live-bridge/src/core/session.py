@@ -7,7 +7,6 @@ from websockets.exceptions import ConnectionClosed
 
 from src.logging import setup_logger
 from src.gemini.client import GeminiLiveClient
-from src.api.routes import is_bridge_active, set_bridge_active
 from src.core.wakeword import wake_word_engine
 
 logger = setup_logger("session_manager")
@@ -19,7 +18,13 @@ class Session:
     def __init__(self, websocket: WebSocket, session_id: str):
         self.ha_ws = websocket
         self.session_id = session_id
+        
+        self.is_active = False
+        self.gemini_task = None
+        
         self.gemini_client = GeminiLiveClient()
+        self.gemini_client.on_conversation_end = self.deactivate
+        
         self.tasks: list[asyncio.Task] = []
         
         q = websocket.query_params
@@ -59,34 +64,11 @@ class Session:
     async def start(self):
         """Starts the session by connecting to Gemini and beginning the duplex stream."""
         await self.ha_ws.accept()
-        logger.info(f"[Session {self.session_id}] Intercom started.")
+        logger.info(f"[Session {self.session_id}] Intercom started. Waiting for wake word.")
 
+        # The session lives as long as the HA WebSocket is alive
         try:
-            await self.gemini_client.connect()
-        except Exception as e:
-            logger.error(f"[Session {self.session_id}] Failed to connect to Gemini: {e}")
-            await self.ha_ws.close(code=1011, reason="Gemini Connection Failed")
-            return
-
-        # Start concurrent tasks for full-duplex communication
-        # 1. Listen to Home Assistant -> Send to Gemini
-        # 2. Listen to Gemini -> Send to Home Assistant
-        ha_to_gemini_task = asyncio.create_task(self._ha_to_gemini_loop())
-        gemini_to_ha_task = asyncio.create_task(
-            self.gemini_client.receive_loop(self._on_gemini_audio_chunk)
-        )
-        
-        self.tasks.extend([ha_to_gemini_task, gemini_to_ha_task])
-
-        # Wait until both tasks finish (or one fails)
-        try:
-            # return_when=asyncio.FIRST_COMPLETED to stop if one connection drops
-            done, pending = await asyncio.wait(
-                self.tasks, 
-                return_when=asyncio.FIRST_COMPLETED
-            )
-            for task in pending:
-                task.cancel()
+            await self._ha_to_gemini_loop()
         except Exception as e:
             logger.error(f"[Session {self.session_id}] Task error: {e}")
         finally:
@@ -118,11 +100,9 @@ class Session:
 
                     # 2. Gate: only forward mic audio to Gemini when bridge is active.
                     # If inactive, we use this audio purely for Wake Word detection!
-                    if not is_bridge_active():
+                    if not self.is_active:
                         if wake_word_engine.process_chunk(pcm_bytes):
-                            logger.info(f"[Session {self.session_id}] 🔔 WAKE WORD DETECTED! Activating bridge.")
-                            set_bridge_active(True)
-                            await self._play_ding()
+                            await self.activate()
                         continue  # Drop chunk from reaching Gemini
 
                     # 3. Half-Duplex: Suppress mic audio while speaker is playing (+ echo tail)
@@ -152,7 +132,8 @@ class Session:
                         except Exception:
                             pass
                     
-                    await self.gemini_client.send_audio_chunk(pcm_bytes)
+                    if self.gemini_client.ws:
+                        await self.gemini_client.send_audio_chunk(pcm_bytes)
                 elif message.get("text"):
                     # Could handle commands (e.g. JSON metadata) from HA here
                     text_data = message["text"]
@@ -162,6 +143,45 @@ class Session:
             pass
         except Exception as e:
             logger.warning(f"[Session {self.session_id}] HA disconnected or error: {e}")
+
+    def deactivate(self):
+        self.is_active = False
+        wake_word_engine.reset()
+        logger.info(f"[Session {self.session_id}] Deactivated. Gemini disconnected. Waiting for Wake Word.")
+        if self.gemini_client.ws:
+            asyncio.create_task(self.gemini_client.close())
+        if self.gemini_task:
+            self.gemini_task.cancel()
+            self.gemini_task = None
+            
+    async def _run_gemini_task(self):
+        """Wrapper to run the Gemini receive loop and deactivate on exit or crash."""
+        try:
+            await self.gemini_client.receive_loop(self._on_gemini_audio_chunk)
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            logger.error(f"[Session {self.session_id}] Gemini receive task failed: {e}")
+        finally:
+            if self.is_active:
+                logger.warning(f"[Session {self.session_id}] Gemini loop ended unexpectedly. Deactivating.")
+                self.deactivate()
+
+    async def activate(self):
+        if self.is_active: return
+        self.is_active = True
+        logger.info(f"[Session {self.session_id}] 🔔 WAKE WORD DETECTED! Activating bridge.")
+        await self._play_ding()
+        
+        logger.info(f"[Session {self.session_id}] 🚀 Connecting to Gemini Live API...")
+        try:
+            await self.gemini_client.connect()
+            self.gemini_task = asyncio.create_task(self._run_gemini_task())
+            self.tasks.append(self.gemini_task)
+            logger.info(f"[Session {self.session_id}] 🟢 Gemini Connection established!")
+        except Exception as e:
+            logger.error(f"Failed to connect to Gemini: {e}")
+            self.deactivate()
 
     async def _play_ding(self):
         """Play a simple synthetic sine wave 'ding' to acknowledge wake word."""

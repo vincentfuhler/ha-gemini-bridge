@@ -5,7 +5,6 @@ import os
 import websockets
 from typing import Callable, Any
 
-from src.api.routes import set_bridge_active
 from src.logging import setup_logger
 from src.config import settings
 from src.gemini.tools import HA_TOOLS, MEMORY_FILE
@@ -71,6 +70,9 @@ class GeminiLiveClient:
         # HA client for function call execution
         token = settings.effective_ha_token
         self.ha = HomeAssistantClient(settings.HA_URL, token) if token else None
+        
+        # Callback triggered when Gemini invokes end_conversation
+        self.on_conversation_end: Callable[[], None] | None = None
 
     async def connect(self):
         """Establish the WebSocket connection to Gemini and send setup config."""
@@ -250,7 +252,8 @@ class GeminiLiveClient:
 
             elif fn_name == "end_conversation":
                 logger.info("👋 Gemini decided to end the conversation. Muting microphone.")
-                set_bridge_active(False)
+                if self.on_conversation_end:
+                    self.on_conversation_end()
                 return {"success": True, "note": "Conversation ended. Mic is now muted."}
 
             else:
