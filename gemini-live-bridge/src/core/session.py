@@ -30,6 +30,8 @@ class Session:
         self.bytes_sent_in_turn = 0
         self.turn_start_time = None
         self.last_audio_time = 0.0
+
+    async def start(self):
         """Starts the session by connecting to Gemini and beginning the duplex stream."""
         await self.ha_ws.accept()
         logger.info(f"[Session {self.session_id}] Intercom started.")
