@@ -16,14 +16,25 @@ logger = setup_logger("gemini_client")
 def _load_system_prompt() -> str | None:
     """
     Load system prompt from the configured file path.
-    Falls back to the bundled default if the user file doesn't exist.
+    Falls back to the bundled default if the user file doesn't exist, and auto-creates it.
     """
-    paths = [
-        settings.SYSTEM_PROMPT_FILE,           # /config/gemini_system_prompt.txt (user-editable)
-        "/app/system_prompt.txt",              # Bundled default inside container
-        os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-                     "system_prompt.txt"),     # Dev fallback (repo root)
-    ]
+    user_path = settings.SYSTEM_PROMPT_FILE
+    bundled_path = "/app/system_prompt.txt"
+    dev_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "system_prompt.txt")
+
+    # If the user file doesn't exist, seed it from the original
+    if not os.path.exists(user_path):
+        source_path = bundled_path if os.path.exists(bundled_path) else dev_path
+        if os.path.exists(source_path):
+            try:
+                os.makedirs(os.path.dirname(user_path), exist_ok=True)
+                with open(source_path, "r", encoding="utf-8") as src, open(user_path, "w", encoding="utf-8") as dst:
+                    dst.write(src.read())
+                logger.info(f"✨ Auto-created default system prompt at {user_path}")
+            except Exception as e:
+                logger.warning(f"Could not auto-create {user_path}: {e}")
+
+    paths = [user_path, bundled_path, dev_path]
     for path in paths:
         if os.path.exists(path):
             try:
@@ -33,6 +44,7 @@ def _load_system_prompt() -> str | None:
                     return prompt
             except Exception as e:
                 logger.warning(f"Failed to read system prompt from {path}: {e}")
+                
     logger.warning("No system prompt file found. Starting without system instruction.")
     return None
 
