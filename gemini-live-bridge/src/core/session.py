@@ -88,9 +88,6 @@ class Session:
                     if self.in_depth != 16:
                         pcm_bytes = audioop.lin2lin(pcm_bytes, self.in_depth // 8, 2)
                         
-                    # Boost microphone volume by 30x (ESP32 raw i2s captures are often way too quiet for VAD)
-                    pcm_bytes = audioop.mul(pcm_bytes, 2, 30.0)
-                    
                     if self.ha_chunks_received == 1:
                         logger.info(f"[Session {self.session_id}] 🎤 First real audio chunk received from ESP32 Microphone!")
                         try:
@@ -103,7 +100,7 @@ class Session:
                             
                     elif self.ha_chunks_received % 50 == 0:
                         out_volume = audioop.rms(pcm_bytes, 2)
-                        logger.info(f"[Session {self.session_id}] 🎤 Forwarded {self.ha_chunks_received} microphone chunks to Gemini... (Boosted Out RMS: {out_volume})")
+                        logger.info(f"[Session {self.session_id}] 🎤 Forwarded {self.ha_chunks_received} microphone chunks to Gemini... (Mic RMS: {out_volume})")
                         
                     if hasattr(self, "debug_wav") and self.ha_chunks_received <= 500:
                         try:
