@@ -39,6 +39,13 @@ class Session:
         # Diagnostic Counters
         self.ha_chunks_received = 0
         self.gemini_chunks_received = 0
+        
+        # Debugging: Save first 8 seconds of Gemini output
+        self.out_wav = wave.open("/tmp/debug_out.wav", "wb")
+        self.out_wav.setnchannels(self.out_channels)
+        self.out_wav.setsampwidth(self.out_depth // 8)
+        self.out_wav.setframerate(self.out_rate)
+        self.out_bytes_saved = 0
 
     async def start(self):
         """Starts the session by connecting to Gemini and beginning the duplex stream."""
