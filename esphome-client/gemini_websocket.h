@@ -21,6 +21,9 @@ class GeminiWebSocketClient : public Component {
   size_t available_data_ = 0;
   const size_t BUFFER_SIZE = 1024 * 1024 * 4; // 4 MB PSRAM Buffer (hält ~21 Sekunden 48kHz Stereo)
   std::mutex audio_mutex_;
+  
+  bool first_audio_received_ = false;
+  bool first_audio_played_ = false;
 
  public:
   std::function<void()> on_connected_ = nullptr;
@@ -88,6 +91,10 @@ class GeminiWebSocketClient : public Component {
         size_t written = this->speaker_->play(data_ptr, contiguous_avail);
         
         if (written > 0) {
+            if (!this->first_audio_played_) {
+                this->first_audio_played_ = true;
+                ESP_LOGI("gemini_ws", "🔊 SUCCESS: Hardware Speaker consumed its first bytes! Playback is physically starting!");
+            }
             this->read_idx_ = (this->read_idx_ + written) % this->BUFFER_SIZE;
             this->available_data_ -= written;
             ESP_LOGV("gemini_ws", "Speaker consumed %d bytes (Remaining: %d)", written, this->available_data_);
@@ -103,6 +110,8 @@ class GeminiWebSocketClient : public Component {
     switch (event_id) {
         case WEBSOCKET_EVENT_CONNECTED:
             ESP_LOGI("gemini_ws", "WebSocket Connected to Gemini Bridge!");
+            self->first_audio_received_ = false;
+            self->first_audio_played_ = false;
             if (self->mic_ != nullptr) {
                 ESP_LOGI("gemini_ws", "Starting ESP32 Microphone...");
                 self->mic_->start();
@@ -130,6 +139,10 @@ class GeminiWebSocketClient : public Component {
         case WEBSOCKET_EVENT_DATA:
             // Opcode 2 means Binary Data (Audio)
             if (data->op_code == 2 && self->speaker_ != nullptr) {
+                if (!self->first_audio_received_) {
+                    self->first_audio_received_ = true;
+                    ESP_LOGI("gemini_ws", "🔊 SUCCESS: ESP32 RECEIVED THE FIRST AUDIO RESPONSE CHUNK FROM BRIDGE!");
+                }
                 std::lock_guard<std::mutex> lock(self->audio_mutex_);
                 size_t to_write = data->data_len;
                 ESP_LOGD("gemini_ws", "Received Binary Audio Chunk: %d bytes", to_write);
