@@ -62,7 +62,7 @@ class GeminiWebSocketClient : public Component {
 
     while (true) {
         if (self->avail_len_ == 0 || self->speaker_ == nullptr) {
-            vTaskDelay(pdMS_TO_TICKS(10));
+            vTaskDelay(pdMS_TO_TICKS(5));
             continue;
         }
 
@@ -109,7 +109,7 @@ class GeminiWebSocketClient : public Component {
                          self->speaker_->is_running() ? "yes" : "no",
                          self->avail_len_);
             }
-            vTaskDelay(pdMS_TO_TICKS(5));
+            vTaskDelay(pdMS_TO_TICKS(1));
         } else {
             self->play_zero_counter_ = 0;
             if (!self->first_audio_played_) {
