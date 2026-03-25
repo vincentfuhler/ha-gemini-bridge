@@ -30,6 +30,10 @@ class Session:
         self.bytes_sent_in_turn = 0
         self.turn_start_time = None
         self.last_audio_time = 0.0
+        
+        # Diagnostic Counters
+        self.ha_chunks_received = 0
+        self.gemini_chunks_received = 0
 
     async def start(self):
         """Starts the session by connecting to Gemini and beginning the duplex stream."""
@@ -77,9 +81,12 @@ class Session:
                 
                 if message.get("bytes"):
                     pcm_bytes = message["bytes"]
-                    if not getattr(self, "mic_started", False):
-                        logger.info(f"[Session {self.session_id}] Receiving microphone audio from ESP32...")
-                        self.mic_started = True
+                    
+                    self.ha_chunks_received += 1
+                    if self.ha_chunks_received == 1:
+                        logger.info(f"[Session {self.session_id}] 🎤 First real audio chunk received from ESP32 Microphone!")
+                    elif self.ha_chunks_received % 50 == 0:
+                        logger.info(f"[Session {self.session_id}] 🎤 Forwarded {self.ha_chunks_received} microphone chunks to Gemini...")
                         
                     if self.in_depth != 16:
                         pcm_bytes = audioop.lin2lin(pcm_bytes, self.in_depth // 8, 2)
@@ -124,7 +131,15 @@ class Session:
             # If we've sent more than 10 seconds of audio AHEAD of real time, pause to let ESP32 catch up!
             buffer_ahead = audio_seconds_sent - elapsed_time
             if buffer_ahead > 10.0:
-                await asyncio.sleep(buffer_ahead - 5.0) # Pause so it drains down to 5 seconds
+                pause_time = buffer_ahead - 5.0
+                logger.info(f"[Session {self.session_id}] ⏳ Pacing: ESP32 buffer is {buffer_ahead:.1f}s ahead. Pausing Gemini for {pause_time:.1f}s...")
+                await asyncio.sleep(pause_time) # Pause so it drains down to 5 seconds
+                
+            self.gemini_chunks_received += 1
+            if self.gemini_chunks_received == 1:
+                logger.info(f"[Session {self.session_id}] 🔊 First audio response chunk RECEIVED FROM GEMINI!")
+            elif self.gemini_chunks_received % 50 == 0:
+                logger.info(f"[Session {self.session_id}] 🔊 Forwarded {self.gemini_chunks_received} audio chunks from Gemini to ESP32...")
                 
             await self.ha_ws.send_bytes(pcm_bytes)
         except Exception as e:
