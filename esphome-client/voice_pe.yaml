@@ -1,7 +1,7 @@
 substitutions:
   name: "gemini-voice-pe"
   friendly_name: "Gemini Voice PE"
-  websocket_url: "ws://10.3.0.41:8000/ws?in_depth=32&in_channels=2&in_rate=16000&out_depth=16&out_rate=48000&out_channels=2"
+  websocket_url: "ws://10.3.0.41:8000/ws?in_depth=32&in_channels=2&in_rate=16000&out_depth=32&out_rate=48000&out_channels=2"
 
 esphome:
   name: "${name}"
