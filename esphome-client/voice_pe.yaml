@@ -8,24 +8,6 @@ esphome:
   friendly_name: "${friendly_name}"
   includes:
     - gemini_websocket.h
-  on_boot:
-    priority: -100  # Run after all components are initialized
-    then:
-      - lambda: |-
-          // Create the Gemini client ONCE at boot (WebSocket stays persistently connected).
-          // This avoids expensive reconnection latency on every wake word detection.
-          auto *client = new GeminiWebSocketClient("${websocket_url}", id(i2s_mics), id(media_mixing_input));
-          
-          // When the session auto-expires (20s after last Gemini audio), log it.
-          client->on_session_ended_ = []() {
-              ESP_LOGI("gemini_ws", "✅ Session ended. Device is back in idle/wake-word mode.");
-          };
-          
-          App.register_component_(client);
-          client->setup();
-          
-          // Store pointer to global for wake word callback access
-          id(gemini_client_ptr) = (void*)client;
 
 # ─── Official Voice PE Hardware Configuration ─────────────────────────────────
 packages:
@@ -38,6 +20,28 @@ packages:
 wifi:
   ssid: "Paul Walter"
   password: "paulwalter"
+  on_connect:
+    - lambda: |-
+        if (id(gemini_client_ptr) == nullptr) {
+            // Create the Gemini client ONCE on first WiFi connect.
+            // NOTE: mic is NOT started here — microWakeWord manages the mic!
+            // We only register our callback and connect the WebSocket.
+            auto *client = new GeminiWebSocketClient("${websocket_url}", id(i2s_mics), id(media_mixing_input));
+
+            client->on_session_ended_ = []() {
+                ESP_LOGI("gemini_ws", "✅ Gemini session ended. Back to wake-word listening.");
+            };
+
+            App.register_component_(client);
+            client->setup();
+            id(gemini_client_ptr) = (void*)client;
+            ESP_LOGI("gemini_ws", "Gemini client created. Waiting for wake word 'Okay Nabu'...");
+        }
+    # Explicitly start microWakeWord so it listens for "Okay Nabu"
+    # The official VA state machine is not used, so we must start it ourselves.
+    - delay: 500ms
+    - micro_wake_word.start:
+        id: mww
 
 # ─── API / OTA ────────────────────────────────────────────────────────────────
 api:
@@ -56,12 +60,13 @@ globals:
     initial_value: "nullptr"
 
 # ─── Wake Word → Start Gemini Session ─────────────────────────────────────────
-# Override the on_wake_word_detected event from the official YAML to also
-# trigger our Gemini session. The official voice_assistant.start is REPLACED
-# since we don't use HA voice assistant pipeline.
+# Merges with the official YAML's on_wake_word_detected.
+# The official handler tries to start voice_assistant (which will fail gracefully).
+# Our handler starts the Gemini session.
 micro_wake_word:
   on_wake_word_detected:
     - lambda: |-
+        ESP_LOGI("gemini_ws", "🎙️ Wake word detected! Starting Gemini session...");
         if (id(gemini_client_ptr) != nullptr) {
             auto *client = static_cast<GeminiWebSocketClient*>(id(gemini_client_ptr));
             client->startSession();

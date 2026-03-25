@@ -87,10 +87,10 @@ class GeminiWebSocketClient : public Component {
       first_audio_received_ = false; first_audio_played_ = false;
       speaker_started_ = false;
 
-      if (mic_ != nullptr) {
-          ESP_LOGI("gemini_ws", "▶ Starting microphone...");
-          mic_->start();
-      }
+      // Note: We do NOT call mic_->start() here!
+      // microWakeWord already started the mic for wake word detection.
+      // Our add_data_callback() receives mic data and gates it on session_active_.
+      ESP_LOGI("gemini_ws", "Session active. Mic audio will now be forwarded to Gemini.");
   }
 
   // Called manually or by the auto-timeout watchdog
@@ -99,7 +99,10 @@ class GeminiWebSocketClient : public Component {
       ESP_LOGI("gemini_ws", "⏹ Stopping Gemini session.");
       session_active_ = false;
 
-      if (mic_ != nullptr) mic_->stop();
+      // Note: We do NOT call mic_->stop() here!
+      // microWakeWord must keep the mic running for the next wake word detection.
+      // We only gate our data forwarding via session_active_.
+      ESP_LOGI("gemini_ws", "Session inactive. Mic audio will be suppressed until next wake word.");
       if (speaker_ != nullptr) speaker_->stop();
       speaker_started_ = false;
 
