@@ -67,7 +67,9 @@ class GeminiWebSocketClient : public Component {
 
   // ─── PUBLIC API ────────────────────────────────────────────────────────────
 
-  // Called from voice_pe.yaml on_wake_word_detected
+  bool isSessionActive() const { return session_active_; }
+
+  // Called from voice_pe.yaml on_wake_word_detected or button press
   void startSession() {
       if (session_active_) {
           ESP_LOGW("gemini_ws", "startSession() called but session already active. Ignoring.");
