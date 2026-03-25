@@ -37,4 +37,9 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
+    @property
+    def effective_ha_token(self) -> str:
+        """Use the internal SUPERVISOR_TOKEN by default for zero-config authentication if the user hasn't explicitly set a valid token."""
+        return os.environ.get("SUPERVISOR_TOKEN", "").strip() or self.HA_TOKEN.strip()
+
 settings = Settings()

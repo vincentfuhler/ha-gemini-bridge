@@ -56,8 +56,8 @@ class GeminiLiveClient:
             f"?key={self.api_key}"
         )
         # HA client for function call execution
-        self.ha = HomeAssistantClient(settings.HA_URL, settings.HA_TOKEN) \
-            if settings.HA_TOKEN else None
+        token = settings.effective_ha_token
+        self.ha = HomeAssistantClient(settings.HA_URL, token) if token else None
 
     async def connect(self):
         """Establish the WebSocket connection to Gemini and send setup config."""
