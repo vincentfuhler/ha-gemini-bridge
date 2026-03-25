@@ -40,6 +40,13 @@ class Session:
         self.ha_chunks_received = 0
         self.gemini_chunks_received = 0
         
+        # Half-Duplex Echo Prevention:
+        # While Gemini is speaking, suppress mic audio to Gemini to prevent self-interruption.
+        # The microphone picks up the speaker due to insufficient AEC on the XMOS DSP.
+        # speaker_active_until = timestamp until which mic should be suppressed.
+        self.speaker_active_until = 0.0
+        self.MIC_TAIL_SECS = 1.5  # seconds of suppression AFTER audio stops (echo tail)
+        
         # Debugging: Save first 8 seconds of Gemini output
         self.out_wav = wave.open("/tmp/debug_out.wav", "wb")
         self.out_wav.setnchannels(self.out_channels)
@@ -95,6 +102,10 @@ class Session:
                     pcm_bytes = message["bytes"]
                     
                     self.ha_chunks_received += 1
+
+                    # Half-Duplex: Suppress mic audio while speaker is playing (+ echo tail)
+                    if time.time() < self.speaker_active_until:
+                        continue  # Drop this mic chunk — speaker is talking, ignore echo
                         
                     # Hardware DSP (XMOS XU316) provides 32-bit Stereo. 
                     # L-channel is the Clean Processed Voice, R-channel is the internal Echo Reference.
@@ -171,6 +182,10 @@ class Session:
                 self.bytes_sent_in_turn = 0
                 logger.info(f"[Session {self.session_id}] New audio turn started.")
 
+            # Mark speaker as active until this chunk finishes + echo tail
+            chunk_duration = len(pcm_bytes) / (self.out_rate * (self.out_depth // 8) * self.out_channels)
+            self.speaker_active_until = time.time() + chunk_duration + self.MIC_TAIL_SECS
+            
             self.last_audio_time = now
             self.bytes_sent_in_turn += len(pcm_bytes)
 

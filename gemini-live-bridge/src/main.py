@@ -5,7 +5,7 @@ from src.config import settings
 app = FastAPI(
     title="HA Gemini Bridge",
     description="Low-Latency Bridge for Home Assistant Voice to Gemini Live API",
-    version="1.0.36"
+    version="1.0.37"
 )
 
 # Include API Routers
