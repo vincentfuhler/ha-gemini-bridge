@@ -15,6 +15,11 @@ _bridge_active: bool = False
 def is_bridge_active() -> bool:
     return _bridge_active
 
+def set_bridge_active(state: bool):
+    global _bridge_active
+    _bridge_active = state
+    logger.info(f"Bridge active state internally set to: {state}")
+
 
 @router.get("/health")
 async def health_check():

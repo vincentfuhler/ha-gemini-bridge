@@ -7,7 +7,8 @@ from websockets.exceptions import ConnectionClosed
 
 from src.logging import setup_logger
 from src.gemini.client import GeminiLiveClient
-from src.api.routes import is_bridge_active
+from src.api.routes import is_bridge_active, set_bridge_active
+from src.core.wakeword import wake_word_engine
 
 logger = setup_logger("session_manager")
 
@@ -101,26 +102,29 @@ class Session:
                 
                 if message.get("bytes"):
                     pcm_bytes = message["bytes"]
-                    
                     self.ha_chunks_received += 1
 
-                    # Gate: only forward mic audio to Gemini when bridge is active.
-                    # Toggle via POST /api/activate or /api/deactivate from HA.
-                    if not is_bridge_active():
-                        continue  # Drop this chunk -- bridge is inactive
-
-                    # Half-Duplex: Suppress mic audio while speaker is playing (+ echo tail)
-                    if time.time() < self.speaker_active_until:
-                        continue  # Drop this mic chunk — speaker is talking, ignore echo
-                        
-                    # Hardware DSP (XMOS XU316) provides 32-bit Stereo. 
-                    # L-channel is the Clean Processed Voice, R-channel is the internal Echo Reference.
-                    # We MUST extract the Left channel and discard the Right.
+                    # 1. Hardware DSP (XMOS XU316) provides 32-bit Stereo or similar formats.
+                    # Standardize everything to 16kHz 16-bit Mono (required by OpenWakeWord & Gemini bounds)
                     if self.in_channels == 2:
                         pcm_bytes = audioop.tomono(pcm_bytes, self.in_depth // 8, 1.0, 0.0)
-                        
                     if self.in_depth != 16:
                         pcm_bytes = audioop.lin2lin(pcm_bytes, self.in_depth // 8, 2)
+                    if self.in_rate != 16000:
+                        pcm_bytes, _ = audioop.ratecv(pcm_bytes, 2, 1, self.in_rate, 16000, None)
+
+                    # 2. Gate: only forward mic audio to Gemini when bridge is active.
+                    # If inactive, we use this audio purely for Wake Word detection!
+                    if not is_bridge_active():
+                        if wake_word_engine.process_chunk(pcm_bytes):
+                            logger.info(f"[Session {self.session_id}] 🔔 WAKE WORD DETECTED! Activating bridge.")
+                            set_bridge_active(True)
+                            await self._play_ding()
+                        continue  # Drop chunk from reaching Gemini
+
+                    # 3. Half-Duplex: Suppress mic audio while speaker is playing (+ echo tail)
+                    if time.time() < self.speaker_active_until:
+                        continue  # Drop this mic chunk — speaker is talking, ignore echo
                         
                     if self.ha_chunks_received == 1:
                         logger.info(f"[Session {self.session_id}] 🎤 First real audio chunk received from ESP32 Microphone!")
@@ -142,11 +146,8 @@ class Session:
                             if self.ha_chunks_received == 500:
                                 self.debug_wav.close()
                                 logger.info(f"[Session {self.session_id}] 💾 Saved 8 seconds of microphone audio to /tmp/debug.wav!")
-                        except Exception as e:
+                        except Exception:
                             pass
-                        
-                    if self.in_rate != 16000:
-                        pcm_bytes, _ = audioop.ratecv(pcm_bytes, 2, 1, self.in_rate, 16000, None)
                     
                     await self.gemini_client.send_audio_chunk(pcm_bytes)
                 elif message.get("text"):
@@ -158,6 +159,34 @@ class Session:
             pass
         except Exception as e:
             logger.warning(f"[Session {self.session_id}] HA disconnected or error: {e}")
+
+    async def _play_ding(self):
+        """Play a simple synthetic sine wave 'ding' to acknowledge wake word."""
+        try:
+            import numpy as np
+            # Generate 0.3s of 600Hz + 800Hz sine waves
+            duration = 0.3
+            t = np.linspace(0, duration, int(16000 * duration), False)
+            tone = np.sin(2 * np.pi * 600 * t) + np.sin(2 * np.pi * 800 * t)
+            # fade out
+            tone = tone * np.linspace(1, 0, len(t))
+            audio = np.int16(tone * 10000)
+            
+            pcm_bytes = audio.tobytes()
+            # Send through the same formatting as Gemini audio:
+            if getattr(self, "out_rate", 16000) != 16000:
+                pcm_bytes, _ = audioop.ratecv(pcm_bytes, 2, 1, 16000, self.out_rate, None)
+            if getattr(self, "out_depth", 16) != 16:
+                pcm_bytes = audioop.lin2lin(pcm_bytes, 2, self.out_depth // 8)
+            if getattr(self, "out_channels", 1) == 2:
+                pcm_bytes = audioop.tostereo(pcm_bytes, self.out_depth // 8, 1, 1)
+                
+            await self.ha_ws.send_bytes(pcm_bytes)
+            # Suppress mic while ding is playing
+            self.speaker_active_until = time.time() + duration + self.MIC_TAIL_SECS
+            logger.info(f"[Session {self.session_id}] 🔔 Chime sent to ESP32.")
+        except Exception as e:
+            logger.error(f"Failed to play ding: {e}")
 
     async def _on_gemini_audio_chunk(self, pcm_bytes: bytes):
         """Callback invoked when Gemini produces audio bytes. Sends directly back to HA."""

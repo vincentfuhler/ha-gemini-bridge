@@ -23,6 +23,10 @@ class Settings(BaseSettings):
     HA_URL: str = "http://supervisor/core"   # Default inside HA addon
     HA_TOKEN: str = ""                        # Long-lived access token
 
+    # Wake Word
+    WAKE_WORD: str = "hey_jarvis"
+    CUSTOM_WAKE_WORD_DIR: str = "/config/wakewords"
+
     # System prompt file (editable by user in /config/)
     SYSTEM_PROMPT_FILE: str = "/config/gemini_system_prompt.txt"
 

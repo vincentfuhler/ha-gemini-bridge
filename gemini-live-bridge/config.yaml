@@ -19,6 +19,8 @@ options:
   GEMINI_VOICE: "Puck"
   HA_URL: "http://supervisor/core"
   HA_TOKEN: ""
+  WAKE_WORD: "hey_jarvis"
+  CUSTOM_WAKE_WORD_DIR: "/config/wakewords"
   LOG_LEVEL: "INFO"
 schema:
   GEMINI_API_KEY: "password"
@@ -26,6 +28,8 @@ schema:
   GEMINI_VOICE: "str"
   HA_URL: "str"
   HA_TOKEN: "password"
+  WAKE_WORD: "str"
+  CUSTOM_WAKE_WORD_DIR: "str"
   LOG_LEVEL: "match(^DEBUG|INFO|WARNING|ERROR|CRITICAL$)"
 ports:
   8000/tcp: 8000
