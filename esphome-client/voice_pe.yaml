@@ -9,23 +9,21 @@ esphome:
   includes:
     - gemini_websocket.h
   on_boot:
-    # Priority -500: runs very late, after all components are setup.
-    # WiFi may still be connecting, but the WebSocket task retries automatically.
     priority: -500
     then:
       - lambda: |-
           if (id(gemini_client_ptr) == nullptr) {
-              ESP_LOGI("gemini_ws", "🚀 on_boot: Creating Gemini client...");
+              // No emoji in ESP_LOGI! Emoji causes silent drops in some ESP-IDF versions.
+              ESP_LOGI("gemini_ws", "[on_boot] Creating Gemini client...");
               auto *client = new GeminiWebSocketClient("${websocket_url}", id(i2s_mics), id(media_mixing_input));
               client->on_session_ended_ = []() {
-                  ESP_LOGI("gemini_ws", "✅ Session ended. Say 'Okay Nabu' or press button to start.");
+                  ESP_LOGI("gemini_ws", "[session] Ended. Call HA button or say wake word to restart.");
               };
               App.register_component_(client);
               client->setup();
               id(gemini_client_ptr) = (void*)client;
-              ESP_LOGI("gemini_ws", "✅ Gemini client created. Waiting for WiFi + wake trigger.");
+              ESP_LOGI("gemini_ws", "[on_boot] Gemini client created. Waiting for trigger.");
           }
-      # Give WiFi 3 seconds to connect, then start microWakeWord via official script
       - delay: 3s
       - script.execute: va_idle
 
@@ -57,33 +55,39 @@ globals:
     restore_value: false
     initial_value: "nullptr"
 
-# ─── Button: Long press (2s) → Start/Stop Gemini Session ──────────────────────
-# Short press (< 200ms) is handled by the official YAML (volume/mute etc.)
-# Long press is our exclusive Gemini trigger — works even if wake word fails.
-binary_sensor:
-  - id: action_button
-    on_click:
-      min_length: 1500ms
-      max_length: 5000ms
-      then:
-        - lambda: |-
-            if (id(gemini_client_ptr) != nullptr) {
-                auto *client = static_cast<GeminiWebSocketClient*>(id(gemini_client_ptr));
-                if (client->isSessionActive()) {
-                    ESP_LOGI("gemini_ws", "🛑 Button: Stopping session.");
-                    client->stopSession();
-                } else {
-                    ESP_LOGI("gemini_ws", "🎙️ Button: Starting Gemini session.");
-                    client->startSession();
-                }
-            }
+# ─── Template Buttons → exposed to Home Assistant via API ─────────────────────
+# These work 100% reliably regardless of YAML package merging issues.
+# Trigger "Start Gemini Session" from HA dashboard, automation, or NFC tag.
+button:
+  - platform: template
+    name: "Start Gemini Session"
+    id: gemini_start_btn
+    on_press:
+      - lambda: |-
+          ESP_LOGI("gemini_ws", "[btn] Start Gemini Session pressed.");
+          if (id(gemini_client_ptr) != nullptr) {
+              auto *client = static_cast<GeminiWebSocketClient*>(id(gemini_client_ptr));
+              client->startSession();
+          } else {
+              ESP_LOGW("gemini_ws", "[btn] Gemini client not ready yet!");
+          }
+
+  - platform: template
+    name: "Stop Gemini Session"
+    id: gemini_stop_btn
+    on_press:
+      - lambda: |-
+          ESP_LOGI("gemini_ws", "[btn] Stop Gemini Session pressed.");
+          if (id(gemini_client_ptr) != nullptr) {
+              auto *client = static_cast<GeminiWebSocketClient*>(id(gemini_client_ptr));
+              client->stopSession();
+          }
 
 # ─── Wake Word → Start Gemini Session ─────────────────────────────────────────
-# Merges with the official YAML's on_wake_word_detected.
 micro_wake_word:
   on_wake_word_detected:
     - lambda: |-
-        ESP_LOGI("gemini_ws", "🎙️ Wake word detected! Starting Gemini session...");
+        ESP_LOGI("gemini_ws", "[wake_word] Detected! Starting Gemini session.");
         if (id(gemini_client_ptr) != nullptr) {
             auto *client = static_cast<GeminiWebSocketClient*>(id(gemini_client_ptr));
             client->startSession();
