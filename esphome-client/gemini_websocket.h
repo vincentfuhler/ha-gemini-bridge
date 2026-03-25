@@ -21,7 +21,7 @@ class GeminiWebSocketClient : public Component {
   size_t read_idx_ = 0;
   size_t write_idx_ = 0;
   size_t avail_len_ = 0;
-  const size_t BUFFER_SIZE = 96000;
+  const size_t BUFFER_SIZE = 192000;
 
   uint32_t total_bytes_received_ = 0;
   uint32_t total_bytes_played_ = 0;
@@ -198,6 +198,9 @@ class GeminiWebSocketClient : public Component {
                                  self->total_bytes_received_, self->total_bytes_played_,
                                  self->avail_len_, self->chunk_counter_);
                     }
+                } else {
+                    ESP_LOGW("gemini_ws", "Buffer overflow! Dropped %u bytes. (Avail: %u, Size: %u)", 
+                             to_write, self->avail_len_, self->BUFFER_SIZE);
                 }
             }
             break;

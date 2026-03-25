@@ -202,11 +202,11 @@ class Session:
             audio_seconds_sent = self.bytes_sent_in_turn / bytes_per_sec
             elapsed_time = time.time() - self.turn_start_time  # Recalculate after potential sleep
 
-            # Keep at most 0.5 seconds ahead of real time (= ~96,000 bytes in buffer)
+            # Keep at most 0.4 seconds ahead of real time
             # This fills the PSRAM buffer comfortably without causing overflow drops.
             # Too low = underruns. Too high = overflow + jumbled audio.
             buffer_ahead_secs = audio_seconds_sent - elapsed_time
-            if buffer_ahead_secs > 0.5:
+            if buffer_ahead_secs > 0.4:
                 await asyncio.sleep(buffer_ahead_secs - 0.2)  # Sleep down to 0.2s ahead
 
             self.gemini_chunks_received += 1
