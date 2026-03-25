@@ -1,7 +1,9 @@
 """
-Gemini function declarations for Home Assistant control.
+Gemini function declarations for Home Assistant control and AI memory.
 These are sent to Gemini at session start so it knows what actions it can take.
 """
+
+MEMORY_FILE = "/config/gemini_memories.txt"
 
 HA_TOOLS = [
     {
@@ -82,6 +84,47 @@ HA_TOOLS = [
                         }
                     },
                     "required": ["entity_id"]
+                }
+            },
+            {
+                "name": "save_memory",
+                "description": (
+                    "Save a note or memory for future sessions. "
+                    "Use this to remember user preferences, names, habits, facts, "
+                    "or anything the user wants you to remember across conversations. "
+                    "Examples: 'The user prefers dim warm light in the evening', "
+                    "'The user's name is Vincent', 'The user wakes up at 7am on weekdays'. "
+                    "Always confirm to the user that you saved the memory."
+                ),
+                "parameters": {
+                    "type": "OBJECT",
+                    "properties": {
+                        "memory": {
+                            "type": "STRING",
+                            "description": (
+                                "A concise, factual note. Write in third person "
+                                "(e.g. 'The user prefers...'). Be specific and actionable."
+                            )
+                        },
+                        "category": {
+                            "type": "STRING",
+                            "enum": ["preference", "person", "routine", "device", "other"],
+                            "description": "Category for organization"
+                        }
+                    },
+                    "required": ["memory", "category"]
+                }
+            },
+            {
+                "name": "read_memories",
+                "description": (
+                    "Read all memories saved in previous sessions. "
+                    "Call this at the very start of each conversation to recall "
+                    "everything you know about the user and their home."
+                ),
+                "parameters": {
+                    "type": "OBJECT",
+                    "properties": {}
                 }
             }
         ]

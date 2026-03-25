@@ -7,7 +7,7 @@ from typing import Callable, Any
 
 from src.logging import setup_logger
 from src.config import settings
-from src.gemini.tools import HA_TOOLS
+from src.gemini.tools import HA_TOOLS, MEMORY_FILE
 from src.ha import HomeAssistantClient
 
 logger = setup_logger("gemini_client")
@@ -181,6 +181,33 @@ class GeminiLiveClient:
                         "climate", "set_temperature", service_data
                     ))
                 return {"success": True, "results": results}
+
+            elif fn_name == "save_memory":
+                memory = args["memory"]
+                category = args.get("category", "other")
+                import datetime
+                timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+                entry = f"[{timestamp}] [{category.upper()}] {memory}\n"
+                try:
+                    with open(MEMORY_FILE, "a", encoding="utf-8") as f:
+                        f.write(entry)
+                    logger.info(f"💾 Memory saved: {entry.strip()}")
+                    return {"success": True, "saved": entry.strip()}
+                except Exception as e:
+                    logger.error(f"Failed to save memory: {e}")
+                    return {"error": str(e)}
+
+            elif fn_name == "read_memories":
+                try:
+                    with open(MEMORY_FILE, "r", encoding="utf-8") as f:
+                        content = f.read().strip()
+                    entries = [l for l in content.splitlines() if l.strip()]
+                    logger.info(f"📖 Read {len(entries)} memories from file")
+                    return {"memories": entries, "count": len(entries)}
+                except FileNotFoundError:
+                    return {"memories": [], "count": 0, "note": "No memories saved yet."}
+                except Exception as e:
+                    return {"error": str(e)}
 
             else:
                 return {"error": f"Unknown function: {fn_name}"}
