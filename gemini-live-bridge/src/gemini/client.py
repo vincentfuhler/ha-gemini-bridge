@@ -5,6 +5,7 @@ import os
 import websockets
 from typing import Callable, Any
 
+from src.api.routes import set_bridge_active
 from src.logging import setup_logger
 from src.config import settings
 from src.gemini.tools import HA_TOOLS, MEMORY_FILE
@@ -246,6 +247,11 @@ class GeminiLiveClient:
                     return {"memories": [], "count": 0, "note": "No memories saved yet."}
                 except Exception as e:
                     return {"error": str(e)}
+
+            elif fn_name == "end_conversation":
+                logger.info("👋 Gemini decided to end the conversation. Muting microphone.")
+                set_bridge_active(False)
+                return {"success": True, "note": "Conversation ended. Mic is now muted."}
 
             else:
                 return {"error": f"Unknown function: {fn_name}"}

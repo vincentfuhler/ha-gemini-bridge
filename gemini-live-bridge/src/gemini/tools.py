@@ -147,6 +147,17 @@ HA_TOOLS = [
                     "type": "OBJECT",
                     "properties": {}
                 }
+            },
+            {
+                "name": "end_conversation",
+                "description": (
+                    "End the current conversation and stop listening. "
+                    "Call this tool when the user says goodbye, thanks you, or implies they no longer need assistance."
+                ),
+                "parameters": {
+                    "type": "OBJECT",
+                    "properties": {}
+                }
             }
         ]
     }
