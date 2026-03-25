@@ -23,25 +23,20 @@ wifi:
   on_connect:
     - lambda: |-
         if (id(gemini_client_ptr) == nullptr) {
-            // Create the Gemini client ONCE on first WiFi connect.
-            // NOTE: mic is NOT started here — microWakeWord manages the mic!
-            // We only register our callback and connect the WebSocket.
             auto *client = new GeminiWebSocketClient("${websocket_url}", id(i2s_mics), id(media_mixing_input));
-
             client->on_session_ended_ = []() {
-                ESP_LOGI("gemini_ws", "✅ Gemini session ended. Back to wake-word listening.");
+                ESP_LOGI("gemini_ws", "✅ Session ended. Back to wake-word listening.");
             };
-
             App.register_component_(client);
             client->setup();
             id(gemini_client_ptr) = (void*)client;
-            ESP_LOGI("gemini_ws", "Gemini client created. Waiting for wake word 'Okay Nabu'...");
+            ESP_LOGI("gemini_ws", "✅ Gemini client created. Starting microWakeWord...");
         }
-    # Explicitly start microWakeWord so it listens for "Okay Nabu"
-    # The official VA state machine is not used, so we must start it ourselves.
-    - delay: 500ms
-    - micro_wake_word.start:
-        id: mww
+        // Start microWakeWord directly — the official HA VA state machine is not
+        // running, so we must trigger it ourselves. Called via C++ to avoid
+        // YAML action sequencing issues.
+        id(mww).start();
+        ESP_LOGI("gemini_ws", "🎤 microWakeWord started. Say 'Okay Nabu'!");
 
 # ─── API / OTA ────────────────────────────────────────────────────────────────
 api:
