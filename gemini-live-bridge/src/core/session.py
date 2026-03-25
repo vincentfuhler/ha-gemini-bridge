@@ -145,6 +145,17 @@ class Session:
             if getattr(self, "out_channels", 1) == 2:
                 pcm_bytes = audioop.tostereo(pcm_bytes, self.out_depth // 8, 1, 1)
                 
+            if self.out_wav:
+                try:
+                    self.out_wav.writeframesraw(pcm_bytes)
+                    self.out_bytes_saved += len(pcm_bytes)
+                    if self.out_bytes_saved >= self.out_rate * (self.out_depth // 8) * self.out_channels * 8:
+                        self.out_wav.close()
+                        self.out_wav = None
+                        logger.info(f"[Session {self.session_id}] 💾 Saved 8 seconds of Gemini output to /tmp/debug_out.wav!")
+                except Exception as e:
+                    pass
+                
             now = time.time()
             # If it's been more than 2 seconds since the last chunk, treat it as a new turn!
             if self.turn_start_time is None or (now - getattr(self, "last_audio_time", 0)) > 2.0:
