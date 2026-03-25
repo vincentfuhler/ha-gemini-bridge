@@ -21,6 +21,7 @@ class Session:
         
         self.is_active = False
         self.gemini_task = None
+        self.watchdog_task = None
         
         self.gemini_client = GeminiLiveClient()
         self.gemini_client.on_conversation_end = self.deactivate
@@ -107,8 +108,14 @@ class Session:
                     elif self.ha_chunks_received % 50 == 0:
                         out_volume = audioop.rms(pcm_bytes, 2)
                         logger.debug(f"[Session {self.session_id}] 🎤 Forwarded {self.ha_chunks_received} microphone chunks to Gemini... (Mic RMS: {out_volume})")
-                    
+                        
                     if self.gemini_client.ws:
+                        # Reset idle timer if user is actively speaking (RMS > 800)
+                        if self.ha_chunks_received % 10 == 0:
+                            if audioop.rms(pcm_bytes, 2) > 800:
+                                self.last_audio_time = time.time()
+                                self.timeout_prompt_sent = False
+                                
                         await self.gemini_client.send_audio_chunk(pcm_bytes)
                 elif message.get("text"):
                     # Could handle commands (e.g. JSON metadata) from HA here
@@ -129,6 +136,9 @@ class Session:
         if self.gemini_task:
             self.gemini_task.cancel()
             self.gemini_task = None
+        if self.watchdog_task:
+            self.watchdog_task.cancel()
+            self.watchdog_task = None
             
     async def _run_gemini_task(self):
         """Wrapper to run the Gemini receive loop and deactivate on exit or crash."""
@@ -154,10 +164,41 @@ class Session:
             await self.gemini_client.connect()
             self.gemini_task = asyncio.create_task(self._run_gemini_task())
             self.tasks.append(self.gemini_task)
+            
+            # Start Watchdog
+            self.last_audio_time = time.time()
+            self.timeout_prompt_sent = False
+            self.watchdog_task = asyncio.create_task(self._inactivity_watchdog())
+            self.tasks.append(self.watchdog_task)
+            
             logger.info(f"[Session {self.session_id}] 🟢 Gemini Connection established!")
         except Exception as e:
             logger.error(f"Failed to connect to Gemini: {e}")
             self.deactivate()
+
+    async def _inactivity_watchdog(self):
+        """Monitors session for silence and prompts Gemini to cleanly exit if forgotten."""
+        try:
+            while self.is_active:
+                await asyncio.sleep(2)
+                if not self.is_active:
+                    break
+                    
+                idle_time = time.time() - self.last_audio_time
+                if idle_time > 20.0 and not getattr(self, "timeout_prompt_sent", False):
+                    self.timeout_prompt_sent = True
+                    logger.info(f"[Session {self.session_id}] ⏱️ Session idle for 20s. Prompting Gemini to close if done.")
+                    if self.gemini_client.ws:
+                        msg = "Systemhinweis: Seit 20 Sekunden gab es keine hörbare Aktivität. Wenn das Gespräch vorbei ist, verabschiede dich kurz und rufe jetzt 'end_conversation' auf."
+                        await self.gemini_client.send_text(msg)
+                        
+                # Hard fallback: if 40s pass, kill it anyway
+                if idle_time > 40.0:
+                    logger.warning(f"[Session {self.session_id}] ⏱️ Hard timeout reached (40s). Terminating session.")
+                    self.deactivate()
+                    break
+        except asyncio.CancelledError:
+            pass
 
     async def _play_ding(self):
         """Play a simple synthetic sine wave 'ding' to acknowledge wake word."""
