@@ -23,7 +23,7 @@ wifi:
   on_connect:
     - lambda: |-
         // Wird erst sicher ausgeführt, sobald das WLAN steht!
-        auto gemini_client = new GeminiWebSocketClient("${websocket_url}", id(i2s_mics), id(media_mixing_input), id(i2s_audio_speaker));
+        auto gemini_client = new GeminiWebSocketClient("${websocket_url}", id(i2s_mics), id(media_resampling_speaker), id(i2s_audio_speaker));
         App.register_component_(gemini_client);
         gemini_client->setup();
 
