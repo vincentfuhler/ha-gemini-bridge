@@ -40,7 +40,19 @@ def _load_system_prompt() -> str | None:
             try:
                 with open(path, "r", encoding="utf-8") as f:
                     prompt = f.read().strip()
-                    logger.info(f"System prompt loaded from {path} ({len(prompt)} chars)")
+                    
+                    try:
+                        from src.gemini.tools import MEMORY_FILE
+                        if os.path.exists(MEMORY_FILE):
+                            with open(MEMORY_FILE, "r", encoding="utf-8") as mf:
+                                memories = mf.read().strip()
+                                if memories:
+                                    prompt += "\n\n--- HINWEIS: GESPEICHERTE ERINNERUNGEN ---\n" + memories
+                                    logger.info(f"Injected {len(memories)} chars of memory into system prompt")
+                    except Exception as e:
+                        logger.warning(f"Could not inject memories into prompt: {e}")
+                    
+                    logger.info(f"System prompt ready ({len(prompt)} chars)")
                     return prompt
             except Exception as e:
                 logger.warning(f"Failed to read system prompt from {path}: {e}")

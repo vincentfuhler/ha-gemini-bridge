@@ -140,8 +140,7 @@ HA_TOOLS = [
                 "name": "read_memories",
                 "description": (
                     "Read all memories saved in previous sessions. "
-                    "Call this at the very start of each conversation to recall "
-                    "everything you know about the user and their home."
+                    "Use this only if you need to fetch memories that are not inherently provided in your instructions."
                 ),
                 "parameters": {
                     "type": "OBJECT",
