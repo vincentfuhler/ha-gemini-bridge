@@ -148,6 +148,58 @@ HA_TOOLS = [
                 }
             },
             {
+                "name": "create_group",
+                "description": (
+                    "Create a new group of Home Assistant entities dynamically. "
+                    "Use this when the user asks you to group several lights, switches, or other devices together under a single name so they can be controlled simultaneously."
+                ),
+                "parameters": {
+                    "type": "OBJECT",
+                    "properties": {
+                        "group_id": {
+                            "type": "STRING",
+                            "description": "A snake_case ID for the new group, e.g. 'tv_lights' or 'all_desk_lamps'"
+                        },
+                        "name": {
+                            "type": "STRING",
+                            "description": "The friendly, human-readable name for the group, e.g. 'TV Lights' oder 'Schreibtisch Lampen'"
+                        },
+                        "entities": {
+                            "type": "ARRAY",
+                            "description": "List of Home Assistant entity IDs to include in the group (e.g. ['light.desk_1', 'light.desk_2'])",
+                            "items": {"type": "STRING"}
+                        }
+                    },
+                    "required": ["group_id", "name", "entities"]
+                }
+            },
+            {
+                "name": "save_ai_routine",
+                "description": (
+                    "Create a background AI automation (Agentic Routine). "
+                    "Use this when the user asks you to do something automatically when an event occurs in Home Assistant. "
+                    "For example: 'Wenn der Fernseher angeht, schließe die Rollos'."
+                ),
+                "parameters": {
+                    "type": "OBJECT",
+                    "properties": {
+                        "trigger_entity": {
+                            "type": "STRING",
+                            "description": "The exact Home Assistant entity ID that triggers the routine (e.g. 'media_player.tv')."
+                        },
+                        "trigger_state": {
+                            "type": "STRING",
+                            "description": "The state that the entity must change to in order to trigger the routine (e.g. 'on', 'off', 'playing')."
+                        },
+                        "action_prompt": {
+                            "type": "STRING",
+                            "description": "A clear natural language instruction telling the AI what tools to execute when the trigger occurs (e.g. 'Schließe das Rollo_1 und Mute den Lautsprecher')."
+                        }
+                    },
+                    "required": ["trigger_entity", "trigger_state", "action_prompt"]
+                }
+            },
+            {
                 "name": "end_conversation",
                 "description": (
                     "End the current conversation and stop listening. "

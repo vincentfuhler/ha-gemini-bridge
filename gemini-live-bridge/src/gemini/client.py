@@ -179,6 +179,16 @@ class GeminiLiveClient:
                 result = await self.ha.call_service(domain, action, service_data)
                 return result
 
+            elif fn_name == "create_group":
+                service_data = {
+                    "object_id": args["group_id"],
+                    "name": args["name"],
+                    "entities": args["entities"]
+                }
+                logger.info(f"Creating HA group '{args['name']}' with entities: {args['entities']}")
+                result = await self.ha.call_service("group", "set", service_data)
+                return {"success": True, "result": result, "note": f"Group '{args['name']}' created successfully. You can now control it using entity_id 'group.{args['group_id']}'."}
+
             elif fn_name == "get_device_state":
                 state = await self.ha.get_state(args["entity_id"])
                 # Return a slimmed-down version for Gemini (avoid context overflow)
@@ -261,6 +271,18 @@ class GeminiLiveClient:
                     return {"memories": [], "count": 0, "note": "No memories saved yet."}
                 except Exception as e:
                     return {"error": str(e)}
+
+            elif fn_name == "save_ai_routine":
+                from src.core.routines import routine_engine
+                success = routine_engine.save_routine(
+                    trigger_entity=args["trigger_entity"],
+                    trigger_state=args["trigger_state"],
+                    action_prompt=args["action_prompt"]
+                )
+                if success:
+                    return {"success": True, "note": "Routine saved successfully. The background agent will monitor HA events."}
+                else:
+                    return {"success": False, "error": "Failed to save AI routine."}
 
             elif fn_name == "end_conversation":
                 logger.info("👋 Gemini decided to end the conversation. Muting microphone.")

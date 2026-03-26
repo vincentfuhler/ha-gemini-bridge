@@ -4,12 +4,20 @@ from src.api import routes, websocket
 from src.config import settings
 from src.core.wakeword import wake_word_engine
 
+import asyncio
+from src.ha.events import ha_websocket_listener
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Load the Wake Word model synchronously on startup (to prevent timeouts on first audio interaction)
     wake_word_engine.load()
+    
+    # Start the Agentic Routine HA Event Listener
+    event_task = asyncio.create_task(ha_websocket_listener())
+    
     yield
-
+    
+    event_task.cancel()
 app = FastAPI(
     title="HA Gemini Bridge",
     description="Low-Latency Bridge for Home Assistant Voice to Gemini Live API",
