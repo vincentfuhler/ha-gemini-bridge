@@ -24,6 +24,21 @@ wifi:
     - lambda: |-
         if (id(gemini_client_ptr) == nullptr) {
             auto *client = new GeminiWebSocketClient("${websocket_url}", id(i2s_mics), id(media_mixing_input));
+            client->set_state_callback([](std::string state) {
+                if (state == "disconnected") {
+                    auto call = id(led_ring).turn_on();
+                    call.set_rgb(1.0, 0.0, 0.0);
+                    call.perform();
+                } else if (state == "connected") {
+                    auto call = id(led_ring).turn_on();
+                    call.set_rgb(0.0, 0.0, 1.0);
+                    call.perform();
+                } else if (state == "listening") {
+                    auto call = id(led_ring).turn_on();
+                    call.set_rgb(0.0, 1.0, 0.0);
+                    call.perform();
+                }
+            });
             App.register_component_(client);
             client->setup();
             id(gemini_client_ptr) = (void*)client;

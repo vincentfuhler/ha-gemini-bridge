@@ -22,7 +22,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="HA Gemini Bridge",
     description="Low-Latency Bridge for Home Assistant Voice to Gemini Live API",
-    version="1.3.9",
+    version="1.3.10",
     lifespan=lifespan
 )
 

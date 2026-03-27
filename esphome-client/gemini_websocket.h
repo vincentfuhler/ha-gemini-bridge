@@ -3,6 +3,7 @@
 #include "esp_heap_caps.h"
 #include <mutex>
 #include <vector>
+#include <functional>
 
 using namespace esphome;
 
@@ -35,11 +36,14 @@ class GeminiWebSocketClient : public Component {
 
   TaskHandle_t playback_task_handle_ = nullptr;
   uint32_t last_connected_time_ = 0;
+  std::function<void(std::string)> on_state_callback_;
 
  public:
   GeminiWebSocketClient(const std::string& url, microphone::Microphone *mic = nullptr,
                         speaker::Speaker *speaker = nullptr)
       : url_(url), mic_(mic), speaker_(speaker) {}
+      
+  void set_state_callback(std::function<void(std::string)> cb) { on_state_callback_ = cb; }
 
   ~GeminiWebSocketClient() {
       if (playback_task_handle_ != nullptr) vTaskDelete(playback_task_handle_);
@@ -78,6 +82,11 @@ class GeminiWebSocketClient : public Component {
 
         std::lock_guard<std::mutex> lock(self->audio_mutex_);
         if (self->avail_len_ == 0) continue;
+
+        // Pre-buffer ~85ms of audio before starting playback to prevent stuttering
+        if (!self->first_audio_played_ && self->avail_len_ < 16384) {
+            continue;
+        }
 
         size_t contiguous = self->BUFFER_SIZE - self->read_idx_;
         if (contiguous > self->avail_len_) contiguous = self->avail_len_;
@@ -118,7 +127,7 @@ class GeminiWebSocketClient : public Component {
 
     esp_websocket_client_config_t cfg = {};
     cfg.uri = url_.c_str();
-    cfg.reconnect_timeout_ms = 5000;
+    cfg.reconnect_timeout_ms = 1000; // Increased reconnect speed
     client_ = esp_websocket_client_init(&cfg);
     esp_websocket_register_events(client_, WEBSOCKET_EVENT_ANY,
                                   &GeminiWebSocketClient::websocket_event_handler, this);
@@ -138,19 +147,8 @@ class GeminiWebSocketClient : public Component {
   }
 
   void loop() override {
-      if (client_ == nullptr) return;
-
-      if (esp_websocket_client_is_connected(client_)) {
-          last_connected_time_ = millis();
-      } else {
-          uint32_t now = millis();
-          if (now - last_connected_time_ > 5000) {
-              ESP_LOGI("gemini_ws", "[Watchdog] WS disconnected for 5s. Forcing reconnect...");
-              esp_websocket_client_stop(client_);
-              esp_websocket_client_start(client_);
-              last_connected_time_ = now; // wait another 5s before retrying
-          }
-      }
+      // esp_websocket_client has its own auto-reconnect logic.
+      // We removed the blocking watchdog loop to allow native rapid reconnects.
   }
 
   // ─── WEBSOCKET EVENT HANDLER ──────────────────────────────────────────────
@@ -163,21 +161,33 @@ class GeminiWebSocketClient : public Component {
     switch (event_id) {
         case WEBSOCKET_EVENT_CONNECTED:
             ESP_LOGI("gemini_ws", "[WS] Connected to Gemini Bridge! Streaming mic audio.");
+            if (self->on_state_callback_) self->on_state_callback_("connected");
             break;
 
         case WEBSOCKET_EVENT_DISCONNECTED:
-            ESP_LOGW("gemini_ws", "[WS] Disconnected. Waiting for watchdog to reconnect...");
+            ESP_LOGW("gemini_ws", "[WS] Disconnected. Fast reconnect executing...");
+            if (self->on_state_callback_) self->on_state_callback_("disconnected");
             self->speaker_started_ = false;
             {
                 std::lock_guard<std::mutex> lock(self->audio_mutex_);
                 self->avail_len_ = 0;
                 self->read_idx_ = 0;
                 self->write_idx_ = 0;
+                self->first_audio_played_ = false;
             }
             break;
 
         case WEBSOCKET_EVENT_DATA:
-            if (data->op_code == 2 && self->speaker_ != nullptr) {
+            if (data->op_code == 1 && data->data_len > 0) { // Text frame
+                std::string payload((char*)data->data_ptr, data->data_len);
+                if (payload.find("\"state\": \"listening\"") != std::string::npos) {
+                    if (self->on_state_callback_) self->on_state_callback_("listening");
+                }
+                else if (payload.find("\"state\": \"connected\"") != std::string::npos) {
+                    if (self->on_state_callback_) self->on_state_callback_("connected");
+                }
+            }
+            else if (data->op_code == 2 && self->speaker_ != nullptr) {
                 std::lock_guard<std::mutex> lock(self->audio_mutex_);
                 size_t to_write = data->data_len;
                 if (self->avail_len_ + to_write <= self->BUFFER_SIZE) {

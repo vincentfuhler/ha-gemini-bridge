@@ -60,6 +60,10 @@ class Session:
         """Starts the session by connecting to Gemini and beginning the duplex stream."""
         await self.ha_ws.accept()
         logger.info(f"[Session {self.session_id}] Intercom started. Waiting for wake word.")
+        try:
+            await self.ha_ws.send_text('{"state": "connected"}')
+        except Exception:
+            pass
 
         # The session lives as long as the HA WebSocket is alive
         try:
@@ -132,6 +136,11 @@ class Session:
         self.is_active = False
         wake_word_engine.reset()
         logger.info(f"[Session {self.session_id}] Deactivated. Gemini disconnected. Waiting for Wake Word.")
+        try:
+            asyncio.create_task(self.ha_ws.send_text('{"state": "connected"}'))
+        except Exception:
+            pass
+            
         if self.gemini_client.ws:
             asyncio.create_task(self.gemini_client.close())
         if self.gemini_task:
@@ -158,6 +167,10 @@ class Session:
         if self.is_active: return
         self.is_active = True
         logger.info(f"[Session {self.session_id}] 🔔 WAKE WORD DETECTED! Activating bridge.")
+        try:
+            await self.ha_ws.send_text('{"state": "listening"}')
+        except Exception:
+            pass
         await self._play_ding()
         
         logger.info(f"[Session {self.session_id}] 🚀 Connecting to Gemini Live API...")
