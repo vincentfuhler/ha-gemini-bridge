@@ -122,7 +122,9 @@ class Session:
                                 self.last_audio_time = time.time()
                                 self.timeout_prompt_sent = False
                                 
-                        await self.gemini_client.send_audio_chunk(pcm_bytes)
+                        # Do not send realtime audio if we just sent a turnComplete text message (prevents 1008 error)
+                        if not getattr(self, "timeout_prompt_sent", False):
+                            await self.gemini_client.send_audio_chunk(pcm_bytes)
                 elif message.get("text"):
                     # Could handle commands (e.g. JSON metadata) from HA here
                     text_data = message["text"]
@@ -259,6 +261,7 @@ class Session:
             if self.turn_start_time is None or (now - getattr(self, "last_speaker_time", 0)) > 1.0:
                 self.turn_start_time = now
                 self.bytes_sent_in_turn = 0
+                self.timeout_prompt_sent = False  # Resume mic forwarding if it was blocked by watchdog
                 logger.info(f"[Session {self.session_id}] New audio turn started.")
 
             # Mark speaker as active until this chunk finishes + echo tail
