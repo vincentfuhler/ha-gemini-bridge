@@ -19,7 +19,7 @@ options:
   GEMINI_VOICE: "Puck"
   HA_URL: "http://supervisor/core"
   HA_TOKEN: ""
-  WAKE_WORD: "hey_jarvis"
+  WAKE_WORD: "computer"
   CUSTOM_WAKE_WORD_DIR: "/config/wakewords"
   LOG_LEVEL: "INFO"
 schema:
