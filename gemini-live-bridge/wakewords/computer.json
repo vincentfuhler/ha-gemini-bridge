@@ -1,0 +1,12 @@
+{
+  "type": "micro_wake_word",
+  "wake_word": "computer",
+  "version": 2,
+  "micro": {
+    "probability_cutoff": 0.5,
+    "sliding_window_size": 10,
+    "feature_step_size": 10,
+    "tensor_arena_size": 32000
+  },
+  "trained_languages": ["en"]
+}

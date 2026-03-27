@@ -24,11 +24,16 @@ class WakeWordEngine:
             target = settings.WAKE_WORD
             logger.info(f"Loading openwakeword model: {target}")
             
-            # Check if the user has a custom model in /config/wakewords/
-            target_path = os.path.join(settings.CUSTOM_WAKE_WORD_DIR, f"{target}.tflite")
-            if os.path.exists(target_path):
-                logger.info(f"Found custom tflite model at {target_path}")
-                self.model = Model(wakeword_models=[target_path], inference_framework="tflite")
+            # Check if the user has a custom model in /config/wakewords/ (Home Assistant Addon)
+            target_path_config = os.path.join(settings.CUSTOM_WAKE_WORD_DIR, f"{target}.tflite")
+            target_path_local = os.path.join(os.path.dirname(__file__), "..", "..", "wakewords", f"{target}.tflite")
+            
+            if os.path.exists(target_path_config):
+                logger.info(f"Found custom tflite model at {target_path_config}")
+                self.model = Model(wakeword_models=[target_path_config], inference_framework="tflite")
+            elif os.path.exists(target_path_local):
+                logger.info(f"Found bundled custom tflite model directly in code at {target_path_local}")
+                self.model = Model(wakeword_models=[target_path_local], inference_framework="tflite")
             else:
                 logger.info(f"Downloading required built-in models if missing from pip package...")
                 download_models()
