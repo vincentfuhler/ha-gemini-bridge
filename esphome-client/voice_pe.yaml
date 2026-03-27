@@ -27,14 +27,17 @@ wifi:
             client->set_state_callback([](std::string state) {
                 if (state == "disconnected") {
                     auto call = id(led_ring).turn_on();
+                    call.set_effect("None");
                     call.set_rgb(1.0, 0.0, 0.0);
                     call.perform();
                 } else if (state == "connected") {
                     auto call = id(led_ring).turn_on();
+                    call.set_effect("None");
                     call.set_rgb(0.0, 0.0, 1.0);
                     call.perform();
                 } else if (state == "listening") {
                     auto call = id(led_ring).turn_on();
+                    call.set_effect("None");
                     call.set_rgb(0.0, 1.0, 0.0);
                     call.perform();
                 }

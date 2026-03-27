@@ -180,6 +180,7 @@ class GeminiWebSocketClient : public Component {
         case WEBSOCKET_EVENT_DATA:
             if (data->op_code == 1 && data->data_len > 0) { // Text frame
                 std::string payload((char*)data->data_ptr, data->data_len);
+                ESP_LOGI("gemini_ws", "[WS] Text payload received: %s", payload.c_str());
                 if (payload.find("\"state\": \"listening\"") != std::string::npos) {
                     if (self->on_state_callback_) self->on_state_callback_("listening");
                 }
