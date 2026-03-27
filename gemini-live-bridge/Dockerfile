@@ -9,6 +9,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy source code and default system prompt
 COPY src/ /app/src/
 COPY system_prompt.txt /app/system_prompt.txt
+COPY wakewords/ /app/wakewords/
 
 # Environment defaults
 ENV PYTHONPATH=/app
