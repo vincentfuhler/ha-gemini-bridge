@@ -21,6 +21,9 @@ class WakeWordEngine:
             from openwakeword.model import Model
             from openwakeword.utils import download_models
             
+            logger.info("Checking and downloading core openwakeword models (melspectrogram, etc)...")
+            download_models()
+            
             target = settings.WAKE_WORD
             logger.info(f"Loading openwakeword model: {target}")
             
@@ -35,8 +38,6 @@ class WakeWordEngine:
                 logger.info(f"Found bundled custom tflite model directly in code at {target_path_local}")
                 self.model = Model(wakeword_models=[target_path_local], inference_framework="tflite")
             else:
-                logger.info(f"Downloading required built-in models if missing from pip package...")
-                download_models()
                 logger.info(f"Using built-in openwakeword model: {target}")
                 self.model = Model(wakeword_models=[target], inference_framework="onnx")
                 
