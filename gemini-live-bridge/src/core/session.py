@@ -97,16 +97,17 @@ class Session:
                     # Boost volume by 5.0x (ESP32 I2S mics are notoriously quiet, which starves the Wake Word model)
                     pcm_bytes = audioop.mul(pcm_bytes, 2, 5.0)
 
-                    # 2. Gate: only forward mic audio to Gemini when bridge is active.
+                    # 2. Half-Duplex Echo Prevention: Suppress ALL mic audio 
+                    # while the speaker is playing and during the echo tail so it doesn't trigger wake words.
+                    if time.time() < self.speaker_active_until:
+                        continue  # Drop this mic chunk completely!
+
+                    # 3. Gate: only forward mic audio to Gemini when bridge is active.
                     # If inactive, we use this audio purely for Wake Word detection!
                     if not self.is_active:
                         if wake_word_engine.process_chunk(pcm_bytes):
                             asyncio.create_task(self.activate())
                         continue  # Drop chunk from reaching Gemini
-
-                    # 3. Half-Duplex: Suppress mic audio while speaker is playing (+ echo tail)
-                    if time.time() < self.speaker_active_until:
-                        continue  # Drop this mic chunk — speaker is talking, ignore echo
                         
                     if self.ha_chunks_received == 1:
                         logger.info(f"[Session {self.session_id}] 🎤 First real audio chunk received from ESP32 Microphone!")
