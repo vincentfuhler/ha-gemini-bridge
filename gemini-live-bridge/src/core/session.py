@@ -56,6 +56,10 @@ class Session:
         self.speaker_active_until = 0.0
         self.MIC_TAIL_SECS = 1.5  # seconds of suppression AFTER audio stops (echo tail)
 
+        # Pre-buffer for Wake Word context (1.5 seconds of 16kHz 16-bit Mono = 48000 bytes)
+        self.pre_buffer = bytearray()
+        self.PRE_BUFFER_SIZE = 48000
+
     async def start(self):
         """Starts the session by connecting to Gemini and beginning the duplex stream."""
         await self.ha_ws.accept()
@@ -105,6 +109,11 @@ class Session:
                     # 3. Gate: only forward mic audio to Gemini when bridge is active.
                     # If inactive, we use this audio purely for Wake Word detection!
                     if not self.is_active:
+                        self.pre_buffer.extend(pcm_bytes)
+                        if len(self.pre_buffer) > self.PRE_BUFFER_SIZE:
+                            # Keep only the latest PRE_BUFFER_SIZE bytes
+                            self.pre_buffer = self.pre_buffer[-self.PRE_BUFFER_SIZE:]
+
                         if wake_word_engine.process_chunk(pcm_bytes):
                             asyncio.create_task(self.activate())
                         continue  # Drop chunk from reaching Gemini
@@ -179,6 +188,13 @@ class Session:
         logger.info(f"[Session {self.session_id}] 🚀 Connecting to Gemini Live API...")
         try:
             await self.gemini_client.connect()
+
+            # 🚀 IMMEDIATELY flush the pre-buffer containing the Wake Word to Gemini 🚀
+            if self.pre_buffer:
+                logger.info(f"[Session {self.session_id}] 🔙 Flushing {len(self.pre_buffer)} bytes of wake-word context to Gemini.")
+                await self.gemini_client.send_audio_chunk(bytes(self.pre_buffer))
+                self.pre_buffer.clear()
+
             self.gemini_task = asyncio.create_task(self._run_gemini_task())
             self.tasks.append(self.gemini_task)
             
