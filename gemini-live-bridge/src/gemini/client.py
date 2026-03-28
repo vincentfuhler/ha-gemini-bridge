@@ -311,9 +311,12 @@ class GeminiLiveClient:
                     return {"success": False, "error": "Failed to run optimization."}
 
             elif fn_name == "end_conversation":
-                logger.info("👋 Gemini decided to end the conversation. Muting microphone.")
+                logger.info("👋 Gemini decided to end the conversation. Delaying disconnect by 1.5s to prevent audio cut-off.")
                 if self.on_conversation_end:
-                    self.on_conversation_end()
+                    async def delayed_end():
+                        await asyncio.sleep(1.5)
+                        self.on_conversation_end()
+                    asyncio.create_task(delayed_end())
                 return {"success": True, "note": "Conversation ended. Mic is now muted."}
 
             else:

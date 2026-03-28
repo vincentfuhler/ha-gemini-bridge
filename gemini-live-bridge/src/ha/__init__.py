@@ -30,6 +30,24 @@ class HomeAssistantClient:
                     logger.error(f"HA get_state failed for {entity_id}: {resp.status} {error}")
                     return {"error": f"HTTP {resp.status}: {error}"}
 
+    async def set_state(self, entity_id: str, state: str, attributes: dict = None) -> dict:
+        """
+        Sets or creates the state of an entity in HA.
+        """
+        url = f"{self.base_url}/api/states/{entity_id}"
+        data = {"state": state}
+        if attributes:
+            data["attributes"] = attributes
+            
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, headers=self.headers, json=data) as resp:
+                if resp.status in (200, 201):
+                    return await resp.json()
+                else:
+                    error = await resp.text()
+                    logger.error(f"HA set_state failed for {entity_id}: {resp.status} {error}")
+                    return {"error": f"HTTP {resp.status}: {error}"}
+
     async def call_service(self, domain: str, service: str, data: dict) -> dict:
         """
         Calls a HA service (e.g. light.turn_on, switch.toggle).

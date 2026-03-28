@@ -8,6 +8,8 @@ from websockets.exceptions import ConnectionClosed
 from src.logging import setup_logger
 from src.gemini.client import GeminiLiveClient
 from src.core.wakeword import wake_word_engine
+from src.ha import HomeAssistantClient
+from src.config import settings
 
 logger = setup_logger("session_manager")
 
@@ -59,13 +61,16 @@ class Session:
         # Pre-buffer for Wake Word context (1.5 seconds of 16kHz 16-bit Mono = 48000 bytes)
         self.pre_buffer = bytearray()
         self.PRE_BUFFER_SIZE = 48000
+        
+        # Interruption Flag
+        self.interrupted = False
 
     async def start(self):
         """Starts the session by connecting to Gemini and beginning the duplex stream."""
         await self.ha_ws.accept()
         logger.info(f"[Session {self.session_id}] Intercom started. Waiting for wake word.")
         try:
-            await self.ha_ws.send_text('{"state": "connected"}')
+            await self.ha_ws.send_text('{"state": "idle"}')
         except Exception:
             pass
 
@@ -101,10 +106,20 @@ class Session:
                     # Boost volume by 5.0x (ESP32 I2S mics are notoriously quiet, which starves the Wake Word model)
                     pcm_bytes = audioop.mul(pcm_bytes, 2, 5.0)
 
-                    # 2. Half-Duplex Echo Prevention: Suppress ALL mic audio 
-                    # while the speaker is playing and during the echo tail so it doesn't trigger wake words.
+                    # 2. Halt-Duplex Echo Prevention / Barge-In
+                    # While Gemini is speaking, we suppress sending mic audio to Gemini to prevent self-interruption.
                     if time.time() < self.speaker_active_until:
-                        continue  # Drop this mic chunk completely!
+                        # Feed the wake word engine while Gemini is speaking to allow interruptions ("Barge-In")
+                        if self.is_active and wake_word_engine.process_chunk(pcm_bytes):
+                            logger.info(f"[Session {self.session_id}] 🛑 INTERRUPT WAKE WORD DETECTED!")
+                            self.interrupted = True
+                            self.speaker_active_until = 0.0
+                            
+                            # Tell Gemini to cancel its current output
+                            asyncio.create_task(self.gemini_client.send_text("Der Nutzer hat dich soeben unterbrochen."))
+                            # Feedback ding to user
+                            asyncio.create_task(self._play_ding())
+                        continue  # Drop chunk from reaching Gemini (Echo prevention)
 
                     # 3. Gate: only forward mic audio to Gemini when bridge is active.
                     # If inactive, we use this audio purely for Wake Word detection!
@@ -125,9 +140,9 @@ class Session:
                         logger.debug(f"[Session {self.session_id}] 🎤 Forwarded {self.ha_chunks_received} microphone chunks to Gemini... (Mic RMS: {out_volume})")
                         
                     if self.gemini_client.ws:
-                        # Reset idle timer if user is actively speaking (RMS > 800)
+                        # Reset idle timer if user is actively speaking (RMS > 1800)
                         if self.ha_chunks_received % 10 == 0:
-                            if audioop.rms(pcm_bytes, 2) > 800:
+                            if audioop.rms(pcm_bytes, 2) > 1800:
                                 self.last_audio_time = time.time()
                                 self.timeout_prompt_sent = False
                                 
@@ -144,14 +159,34 @@ class Session:
         except Exception as e:
             logger.warning(f"[Session {self.session_id}] HA disconnected or error: {e}")
 
+    async def _update_ha_entity(self, is_connected: bool):
+        """Creates/Updates a sensor in HA to show if Gemini is currently active."""
+        if not settings.HA_URL or not settings.effective_ha_token:
+            return
+        client = HomeAssistantClient(settings.HA_URL, settings.effective_ha_token)
+        state_str = "True" if is_connected else "False"
+        try:
+            await client.set_state(
+                "sensor.gemini_verbindung_aktive", 
+                state_str, 
+                {
+                    "friendly_name": "Gemini Verbindung Aktiv", 
+                    "icon": "mdi:robot" if is_connected else "mdi:robot-off"
+                }
+            )
+        except Exception as e:
+            logger.error(f"Failed to update HA entity: {e}")
+
     def deactivate(self):
         self.is_active = False
         wake_word_engine.reset()
         logger.info(f"[Session {self.session_id}] Deactivated. Gemini disconnected. Waiting for Wake Word.")
         
+        asyncio.create_task(self._update_ha_entity(False))
+        
         async def _safe_send_state():
             try:
-                await self.ha_ws.send_text('{"state": "connected"}')
+                await self.ha_ws.send_text('{"state": "idle"}')
             except Exception:
                 pass
                 
@@ -189,8 +224,11 @@ class Session:
         if self.is_active: return
         self.is_active = True
         logger.info(f"[Session {self.session_id}] 🔔 WAKE WORD DETECTED! Activating bridge.")
+        
+        asyncio.create_task(self._update_ha_entity(True))
+        
         try:
-            await self.ha_ws.send_text('{"state": "listening"}')
+            await self.ha_ws.send_text('{"state": "gemini_active"}')
         except Exception:
             pass
         await self._play_ding()
@@ -204,6 +242,15 @@ class Session:
                 logger.info(f"[Session {self.session_id}] 🔙 Flushing {len(self.pre_buffer)} bytes of wake-word context to Gemini.")
                 await self.gemini_client.send_audio_chunk(bytes(self.pre_buffer))
                 self.pre_buffer.clear()
+                
+                # Second-Pass Wake Word Verification Prompt
+                verify_msg = (
+                    "Systemhinweis: "
+                    "Bitte prüfe das soeben erhaltene 1.5s Audio-Fragment genau. "
+                    "Wurde darin das Aktivierungswort 'Computer' wirklich absichtlich an dich gerichtet gesagt? "
+                    "Wenn es nur leises Rauschen, TV im Hintergrund oder ein unbeabsichtigtes Wort war, antworte absolut NICHTS und rufe SOFORT zwingend die Funktion 'end_conversation' auf."
+                )
+                asyncio.create_task(self.gemini_client.send_text(verify_msg))
 
             self.gemini_task = asyncio.create_task(self._run_gemini_task())
             self.tasks.append(self.gemini_task)
@@ -228,16 +275,19 @@ class Session:
                     break
                     
                 idle_time = time.time() - self.last_audio_time
-                if idle_time > 15.0 and not getattr(self, "timeout_prompt_sent", False):
+                if idle_time > 8.0 and not getattr(self, "timeout_prompt_sent", False):
                     self.timeout_prompt_sent = True
-                    logger.info(f"[Session {self.session_id}] ⏱️ Session idle for 15s. Prompting Gemini to close if done.")
+                    logger.info(f"[Session {self.session_id}] ⏱️ Session idle for 8s. Prompting Gemini to close.")
                     if self.gemini_client.ws:
-                        msg = "Systemhinweis: Seit 15 Sekunden gab es keine Aktivität. Die Konversation ist beendet. Rufe jetzt sofort 'end_conversation' auf."
-                        await self.gemini_client.send_text(msg)
-                        
-                # Hard fallback: if 30s pass, kill it anyway
-                if idle_time > 30.0:
-                    logger.warning(f"[Session {self.session_id}] ⏱️ Hard timeout reached (30s). Terminating session.")
+                        msg = "Systemhinweis: Der 8-Sekunden-Timeout wurde erreicht, da der Nutzer nichts mehr gesagt hat. Verabschiede dich nun kurz mit 'Computer Ende' und rufe ZWINGEND sofort danach die Funktion 'end_conversation' auf."
+                        try:
+                            await self.gemini_client.send_text(msg)
+                        except Exception as e:
+                            logger.warning(f"Could not send timeout prompt to Gemini: {e}")
+                            
+                # Hard fallback: if 20s pass, kill it anyway
+                if idle_time > 20.0:
+                    logger.warning(f"[Session {self.session_id}] ⏱️ Hard timeout reached (20s). Terminating session.")
                     self.deactivate()
                     break
         except asyncio.CancelledError:
@@ -288,7 +338,11 @@ class Session:
                 self.turn_start_time = now
                 self.bytes_sent_in_turn = 0
                 self.timeout_prompt_sent = False  # Resume mic forwarding if it was blocked by watchdog
+                self.interrupted = False  # Clear interruption block on a fresh turn
                 logger.info(f"[Session {self.session_id}] New audio turn started.")
+                
+            if getattr(self, "interrupted", False):
+                return  # Drop audio from interrupted turn
 
             # Mark speaker as active until this chunk finishes + echo tail
             chunk_duration = len(pcm_bytes) / (self.out_rate * (self.out_depth // 8) * self.out_channels)
