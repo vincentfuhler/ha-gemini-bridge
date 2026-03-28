@@ -58,9 +58,9 @@ class Session:
         self.speaker_active_until = 0.0
         self.MIC_TAIL_SECS = 1.5  # seconds of suppression AFTER audio stops (echo tail)
 
-        # Pre-buffer for Wake Word context (1.5 seconds of 16kHz 16-bit Mono = 48000 bytes)
+        # Pre-buffer for Wake Word context (3.0 seconds of 16kHz 16-bit Mono = 96000 bytes)
         self.pre_buffer = bytearray()
-        self.PRE_BUFFER_SIZE = 48000
+        self.PRE_BUFFER_SIZE = 96000
         
         # Interruption Flag
         self.interrupted = False
@@ -112,6 +112,7 @@ class Session:
                         # Feed the wake word engine while Gemini is speaking to allow interruptions ("Barge-In")
                         if self.is_active and wake_word_engine.process_chunk(pcm_bytes):
                             logger.info(f"[Session {self.session_id}] 🛑 INTERRUPT WAKE WORD DETECTED!")
+                            wake_word_engine.reset()  # Prevent infinite triggering from the same word
                             self.interrupted = True
                             self.speaker_active_until = 0.0
                             
@@ -223,6 +224,7 @@ class Session:
     async def activate(self):
         if self.is_active: return
         self.is_active = True
+        wake_word_engine.reset()  # Clear buffers to prevent consecutive false positives
         logger.info(f"[Session {self.session_id}] 🔔 WAKE WORD DETECTED! Activating bridge.")
         
         asyncio.create_task(self._update_ha_entity(True))
@@ -231,11 +233,13 @@ class Session:
             await self.ha_ws.send_text('{"state": "gemini_active"}')
         except Exception:
             pass
-        await self._play_ding()
         
         logger.info(f"[Session {self.session_id}] 🚀 Connecting to Gemini Live API...")
         try:
             await self.gemini_client.connect()
+            
+            # Play the success chime ONLY after Gemini is connected
+            await self._play_ding()
 
             # 🚀 IMMEDIATELY flush the pre-buffer containing the Wake Word to Gemini 🚀
             if self.pre_buffer:
@@ -246,7 +250,7 @@ class Session:
                 # Second-Pass Wake Word Verification Prompt
                 verify_msg = (
                     "Systemhinweis: "
-                    "Bitte prüfe das soeben erhaltene 1.5s Audio-Fragment genau. "
+                    "Bitte prüfe das soeben erhaltene 3.0s Audio-Fragment genau. "
                     "Wurde darin das Aktivierungswort 'Computer' wirklich absichtlich an dich gerichtet gesagt? "
                     "Wenn es nur leises Rauschen, TV im Hintergrund oder ein unbeabsichtigtes Wort war, antworte absolut NICHTS und rufe SOFORT zwingend die Funktion 'end_conversation' auf."
                 )
