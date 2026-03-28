@@ -27,8 +27,15 @@ class Settings(BaseSettings):
     WAKE_WORD: str = "hey_jarvis"
     CUSTOM_WAKE_WORD_DIR: str = "/config/wakewords"
 
-    # System prompt file (editable by user in /config/)
+    # System prompt UI Text (if empty, uses SYSTEM_PROMPT_FILE)
+    SYSTEM_PROMPT: str = ""
+
+    # System prompt file (editable by user in /config/ if UI text is empty)
     SYSTEM_PROMPT_FILE: str = "/config/gemini_system_prompt.txt"
+
+    # Optimizer Config
+    OPTIMIZER_MODEL: str = "models/gemini-2.5-flash"
+    OPTIMIZER_PROMPT: str = "Betrachte die Geräte die in Home Assistent zur Verfügung stehen und erstelle hieraus eine strukturierte JSON für die AI. Gruppiere Lichter. Enthält: Name, Kurzbeschreibung, entity_id, und mögliche State/Aktionen."
 
     # Server
     HOST: str = "0.0.0.0"

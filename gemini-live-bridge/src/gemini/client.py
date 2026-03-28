@@ -15,50 +15,72 @@ logger = setup_logger("gemini_client")
 
 def _load_system_prompt() -> str | None:
     """
-    Load system prompt from the configured file path.
-    Falls back to the bundled default if the user file doesn't exist, and auto-creates it.
+    Load system prompt from UI config or file, and inject memories/devices.
     """
-    user_path = settings.SYSTEM_PROMPT_FILE
-    bundled_path = "/app/system_prompt.txt"
-    dev_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "system_prompt.txt")
+    prompt = None
 
-    # If the user file doesn't exist, seed it from the original
-    if not os.path.exists(user_path):
-        source_path = bundled_path if os.path.exists(bundled_path) else dev_path
-        if os.path.exists(source_path):
-            try:
-                os.makedirs(os.path.dirname(user_path), exist_ok=True)
-                with open(source_path, "r", encoding="utf-8") as src, open(user_path, "w", encoding="utf-8") as dst:
-                    dst.write(src.read())
-                logger.info(f"✨ Auto-created default system prompt at {user_path}")
-            except Exception as e:
-                logger.warning(f"Could not auto-create {user_path}: {e}")
+    # Priority 1: Add-on UI Config
+    if settings.SYSTEM_PROMPT and settings.SYSTEM_PROMPT.strip():
+        logger.info("Using SYSTEM_PROMPT from Add-on Configuration.")
+        prompt = settings.SYSTEM_PROMPT.strip()
+    else:
+        # Priority 2: File-based prompt
+        user_path = settings.SYSTEM_PROMPT_FILE
+        bundled_path = "/app/system_prompt.txt"
+        dev_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "system_prompt.txt")
 
-    paths = [user_path, bundled_path, dev_path]
-    for path in paths:
-        if os.path.exists(path):
-            try:
-                with open(path, "r", encoding="utf-8") as f:
-                    prompt = f.read().strip()
-                    
-                    try:
-                        from src.gemini.tools import MEMORY_FILE
-                        if os.path.exists(MEMORY_FILE):
-                            with open(MEMORY_FILE, "r", encoding="utf-8") as mf:
-                                memories = mf.read().strip()
-                                if memories:
-                                    prompt += "\n\n--- HINWEIS: GESPEICHERTE ERINNERUNGEN ---\n" + memories
-                                    logger.info(f"Injected {len(memories)} chars of memory into system prompt")
-                    except Exception as e:
-                        logger.warning(f"Could not inject memories into prompt: {e}")
-                    
-                    logger.info(f"System prompt ready ({len(prompt)} chars)")
-                    return prompt
-            except Exception as e:
-                logger.warning(f"Failed to read system prompt from {path}: {e}")
-                
-    logger.warning("No system prompt file found. Starting without system instruction.")
-    return None
+        if not os.path.exists(user_path):
+            source_path = bundled_path if os.path.exists(bundled_path) else dev_path
+            if os.path.exists(source_path):
+                try:
+                    os.makedirs(os.path.dirname(user_path), exist_ok=True)
+                    with open(source_path, "r", encoding="utf-8") as src, open(user_path, "w", encoding="utf-8") as dst:
+                        dst.write(src.read())
+                    logger.info(f"✨ Auto-created default system prompt at {user_path}")
+                except Exception as e:
+                    logger.warning(f"Could not auto-create {user_path}: {e}")
+
+        for path in [user_path, bundled_path, dev_path]:
+            if os.path.exists(path):
+                try:
+                    with open(path, "r", encoding="utf-8") as f:
+                        prompt = f.read().strip()
+                        break
+                except Exception as e:
+                    logger.warning(f"Failed to read system prompt from {path}: {e}")
+
+    if not prompt:
+        logger.warning("No system prompt found. Starting without system instruction.")
+        return None
+
+    # Inject Memories
+    try:
+        from src.gemini.tools import MEMORY_FILE
+        if os.path.exists(MEMORY_FILE):
+            with open(MEMORY_FILE, "r", encoding="utf-8") as mf:
+                memories = mf.read().strip()
+                if memories:
+                    prompt += "\n\n--- HINWEIS: GESPEICHERTE ERINNERUNGEN ---\n" + memories
+                    logger.info(f"Injected {len(memories)} chars of memory into system prompt")
+    except Exception as e:
+        logger.warning(f"Could not inject memories: {e}")
+
+    # Inject Optimized Device Context
+    try:
+        import json
+        json_path = "/config/optimized_devices.json"
+        if os.path.exists(json_path):
+            with open(json_path, "r", encoding="utf-8") as jsonf:
+                # If it's valid JSON, compact it for the prompt
+                devices_data = json.load(jsonf)
+                devices_text = json.dumps(devices_data, ensure_ascii=False)
+                prompt += "\n\n--- HINWEIS: VERFÜGBARE HOME ASSISTANT GERÄTE ---\n" + devices_text
+                logger.info(f"Injected {len(devices_text)} chars of optimized devices into system prompt")
+    except Exception as e:
+        logger.warning(f"Could not inject optimized devices: {e}")
+
+    logger.info(f"System prompt ready ({len(prompt)} chars)")
+    return prompt
 
 
 class GeminiLiveClient:
@@ -283,6 +305,15 @@ class GeminiLiveClient:
                     return {"success": True, "note": "Routine saved successfully. The background agent will monitor HA events."}
                 else:
                     return {"success": False, "error": "Failed to save AI routine."}
+
+            elif fn_name == "run_device_optimizer":
+                from src.core.optimizer import optimizer_service
+                logger.info("Manual device optimization triggered by Gemini.")
+                success = await optimizer_service.run_optimization()
+                if success:
+                    return {"success": True, "note": "Device JSON successfully regenerated and saved. It will apply on the next conversation."}
+                else:
+                    return {"success": False, "error": "Failed to run optimization."}
 
             elif fn_name == "end_conversation":
                 logger.info("👋 Gemini decided to end the conversation. Muting microphone.")

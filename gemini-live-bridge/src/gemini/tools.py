@@ -209,6 +209,18 @@ HA_TOOLS = [
                     "type": "OBJECT",
                     "properties": {}
                 }
+            },
+            {
+                "name": "run_device_optimizer",
+                "description": (
+                    "Manually trigger the background Device Optimizer Service. "
+                    "Use this when the user asks you to refresh the device list, reload the JSON, or complains about missing devices. "
+                    "The optimization takes a few seconds and updates your device context for future queries."
+                ),
+                "parameters": {
+                    "type": "OBJECT",
+                    "properties": {}
+                }
             }
         ]
     }
