@@ -247,14 +247,14 @@ class Session:
                 await self.gemini_client.send_audio_chunk(bytes(self.pre_buffer))
                 self.pre_buffer.clear()
                 
-                # Second-Pass Wake Word Verification Prompt
-                verify_msg = (
-                    "Systemhinweis: "
-                    "Bitte prüfe das soeben erhaltene 3.0s Audio-Fragment genau. "
-                    "Wurde darin das Aktivierungswort 'Computer' wirklich absichtlich an dich gerichtet gesagt? "
-                    "Wenn es nur leises Rauschen, TV im Hintergrund oder ein unbeabsichtigtes Wort war, antworte absolut NICHTS und rufe SOFORT zwingend die Funktion 'end_conversation' auf."
-                )
-                asyncio.create_task(self.gemini_client.send_text(verify_msg))
+                # Second-Pass Wake Word Verification Prompt (Temporarily disabled due to API 1007 errors)
+                # verify_msg = (
+                #     "Systemhinweis: "
+                #     "Bitte prüfe das soeben erhaltene 3.0s Audio-Fragment genau. "
+                #     "Wurde darin das Aktivierungswort 'Computer' wirklich absichtlich an dich gerichtet gesagt? "
+                #     "Wenn es nur leises Rauschen, TV im Hintergrund oder ein unbeabsichtigtes Wort war, antworte absolut NICHTS und rufe SOFORT zwingend die Funktion 'end_conversation' auf."
+                # )
+                # asyncio.create_task(self.gemini_client.send_text(verify_msg))
 
             self.gemini_task = asyncio.create_task(self._run_gemini_task())
             self.tasks.append(self.gemini_task)
