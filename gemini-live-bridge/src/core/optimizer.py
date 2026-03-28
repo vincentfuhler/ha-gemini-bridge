@@ -39,6 +39,17 @@ class OptimizerService:
 
     async def _loop(self):
         while True:
+            # Check if file was modified recently to prevent redundant runs on startup
+            try:
+                if os.path.exists(self.output_file):
+                    file_age = time.time() - os.path.getmtime(self.output_file)
+                    if file_age < 86400:
+                        sleep_time = 86400 - file_age
+                        logger.info(f"Devices were optimized recently. Sleeping {int(sleep_time)}s before next run.")
+                        await asyncio.sleep(sleep_time)
+            except Exception as e:
+                logger.warning(f"Could not check file age: {e}")
+
             try:
                 await self.run_optimization()
             except Exception as e:
