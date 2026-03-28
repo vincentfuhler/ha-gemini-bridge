@@ -17,9 +17,25 @@ class Session:
     """
     Manages a single conversation session between a Home Assistant client and Gemini.
     """
+    active_sessions: set["Session"] = set()
+    
+    @classmethod
+    async def shutdown_all(cls):
+        """Forcefully disconnects all active sessions securely, preventing ESP32 hangs on reboot."""
+        logger.info(f"Gracefully shutting down {len(cls.active_sessions)} active sessions...")
+        for session in list(cls.active_sessions):
+            try:
+                # Force the HA pipeline to end quickly by sending an error state
+                await session.ha_ws.send_text('{"type": "error", "message": "Bridge is restarting"}')
+            except Exception:
+                pass
+            await session.cleanup()
+            
     def __init__(self, websocket: WebSocket, session_id: str):
         self.ha_ws = websocket
         self.session_id = session_id
+        
+        Session.active_sessions.add(self)
         
         self.is_active = False
         self.gemini_task = None
@@ -236,7 +252,14 @@ class Session:
         
         logger.info(f"[Session {self.session_id}] 🚀 Connecting to Gemini Live API...")
         try:
-            await self.gemini_client.connect()
+            verify_msg = (
+                "Systemhinweis: "
+                "Bitte prüfe das initial empfangene 3.0s Audio-Fragment genau. "
+                "Wurde darin das Aktivierungswort 'Computer' wirklich absichtlich an dich gerichtet gesagt? "
+                "Wenn es nur leises Rauschen, TV im Hintergrund oder ein unbeabsichtigtes Wort war, antworte absolut NICHTS und rufe SOFORT zwingend die Funktion 'end_conversation' auf."
+            ) if self.pre_buffer else None
+            
+            await self.gemini_client.connect(verify_msg)
             
             # Play the success chime ONLY after Gemini is connected
             await self._play_ding()
@@ -246,15 +269,6 @@ class Session:
                 logger.info(f"[Session {self.session_id}] 🔙 Flushing {len(self.pre_buffer)} bytes of wake-word context to Gemini.")
                 await self.gemini_client.send_audio_chunk(bytes(self.pre_buffer))
                 self.pre_buffer.clear()
-                
-                # Second-Pass Wake Word Verification Prompt (Temporarily disabled due to API 1007 errors)
-                # verify_msg = (
-                #     "Systemhinweis: "
-                #     "Bitte prüfe das soeben erhaltene 3.0s Audio-Fragment genau. "
-                #     "Wurde darin das Aktivierungswort 'Computer' wirklich absichtlich an dich gerichtet gesagt? "
-                #     "Wenn es nur leises Rauschen, TV im Hintergrund oder ein unbeabsichtigtes Wort war, antworte absolut NICHTS und rufe SOFORT zwingend die Funktion 'end_conversation' auf."
-                # )
-                # asyncio.create_task(self.gemini_client.send_text(verify_msg))
 
             self.gemini_task = asyncio.create_task(self._run_gemini_task())
             self.tasks.append(self.gemini_task)
@@ -384,6 +398,8 @@ class Session:
     async def cleanup(self):
         """Cleans up sockets and tasks."""
         logger.info(f"[Session {self.session_id}] Cleaning up session.")
+        Session.active_sessions.discard(self)
+        
         for task in self.tasks:
             if not task.done():
                 task.cancel()

@@ -103,7 +103,7 @@ class GeminiLiveClient:
         # Callback triggered when Gemini invokes end_conversation
         self.on_conversation_end: Callable[[], None] | None = None
 
-    async def connect(self):
+    async def connect(self, extra_system_prompt: str = None):
         """Establish the WebSocket connection to Gemini and send setup config."""
         logger.info(f"Connecting to Gemini Live API ({self.model})...")
         self.ws = await websockets.connect(self.uri)
@@ -129,9 +129,10 @@ class GeminiLiveClient:
         }
 
         # Attach system prompt if available
-        if system_prompt:
+        combined_prompt = "\n\n".join(filter(None, [system_prompt, extra_system_prompt]))
+        if combined_prompt:
             setup_msg["setup"]["systemInstruction"] = {
-                "parts": [{"text": system_prompt}]
+                "parts": [{"text": combined_prompt}]
             }
 
         await self.ws.send(json.dumps(setup_msg))

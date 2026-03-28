@@ -27,13 +27,16 @@ async def lifespan(app: FastAPI):
     yield
     
     logger.info("Shutting down HA Gemini Bridge...")
+    from src.core.session import Session
+    await Session.shutdown_all()
+    
     await optimizer_service.stop()
     
     event_task.cancel()
 app = FastAPI(
     title="HA Gemini Bridge",
     description="Low-Latency Bridge for Home Assistant Voice to Gemini Live API",
-    version="1.4.8",
+    version="1.4.9",
     lifespan=lifespan
 )
 
