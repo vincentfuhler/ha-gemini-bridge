@@ -202,16 +202,16 @@ class Session:
                     break
                     
                 idle_time = time.time() - self.last_audio_time
-                if idle_time > 20.0 and not getattr(self, "timeout_prompt_sent", False):
+                if idle_time > 15.0 and not getattr(self, "timeout_prompt_sent", False):
                     self.timeout_prompt_sent = True
-                    logger.info(f"[Session {self.session_id}] ⏱️ Session idle for 20s. Prompting Gemini to close if done.")
+                    logger.info(f"[Session {self.session_id}] ⏱️ Session idle for 15s. Prompting Gemini to close if done.")
                     if self.gemini_client.ws:
-                        msg = "Systemhinweis: Seit 20 Sekunden gab es keine hörbare Aktivität. Wenn das Gespräch vorbei ist, verabschiede dich kurz und rufe jetzt 'end_conversation' auf."
+                        msg = "Systemhinweis: Seit 15 Sekunden gab es keine Aktivität. Die Konversation ist beendet. Rufe jetzt sofort 'end_conversation' auf."
                         await self.gemini_client.send_text(msg)
                         
-                # Hard fallback: if 40s pass, kill it anyway
-                if idle_time > 40.0:
-                    logger.warning(f"[Session {self.session_id}] ⏱️ Hard timeout reached (40s). Terminating session.")
+                # Hard fallback: if 30s pass, kill it anyway
+                if idle_time > 30.0:
+                    logger.warning(f"[Session {self.session_id}] ⏱️ Hard timeout reached (30s). Terminating session.")
                     self.deactivate()
                     break
         except asyncio.CancelledError:
