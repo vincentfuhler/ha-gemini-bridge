@@ -22,7 +22,6 @@ options:
   WAKE_WORD: "computer"
   CUSTOM_WAKE_WORD_DIR: "/config/wakewords"
   LOG_LEVEL: "INFO"
-  SYSTEM_PROMPT: ""
   OPTIMIZER_MODEL: "models/gemini-2.5-flash"
   OPTIMIZER_PROMPT: "Betrachte die Geräte die in Homeassiten zur verfügung stehen und erstelle hierraus eine JSON für eine Heimautomatierungs AI. Lichter sollen in Gruppen und nicht einzeln gesteuert werden. Betrachte die Geräte und versuch die JSON so sinnvoll wie möglich für den Assistenten zu bauen. Der Assistent benötigt einen Namen, ggf eine Kurzbeschreibung und die Home Assistant ID für die Steuerung sowie mögliche Steuerbefehle."
 schema:
@@ -34,7 +33,6 @@ schema:
   WAKE_WORD: "str"
   CUSTOM_WAKE_WORD_DIR: "str"
   LOG_LEVEL: "match(^DEBUG|INFO|WARNING|ERROR|CRITICAL$)"
-  SYSTEM_PROMPT: "str?"
   OPTIMIZER_MODEL: "str"
   OPTIMIZER_PROMPT: "str"
 ports:

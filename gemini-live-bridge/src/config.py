@@ -27,10 +27,7 @@ class Settings(BaseSettings):
     WAKE_WORD: str = "hey_jarvis"
     CUSTOM_WAKE_WORD_DIR: str = "/config/wakewords"
 
-    # System prompt UI Text (if empty, uses SYSTEM_PROMPT_FILE)
-    SYSTEM_PROMPT: str = ""
-
-    # System prompt file (editable by user in /config/ if UI text is empty)
+    # System prompt file (editable via Bridge Web UI)
     SYSTEM_PROMPT_FILE: str = "/config/gemini_system_prompt.txt"
 
     # Optimizer Config

@@ -15,21 +15,16 @@ logger = setup_logger("gemini_client")
 
 def _load_system_prompt() -> str | None:
     """
-    Load system prompt from UI config or file, and inject memories/devices.
+    Load system prompt from file, and inject memories/devices.
     """
     prompt = None
 
-    # Priority 1: Add-on UI Config
-    if settings.SYSTEM_PROMPT and settings.SYSTEM_PROMPT.strip():
-        logger.info("Using SYSTEM_PROMPT from Add-on Configuration.")
-        prompt = settings.SYSTEM_PROMPT.strip()
-    else:
-        # Priority 2: File-based prompt
-        user_path = settings.SYSTEM_PROMPT_FILE
-        bundled_path = "/app/system_prompt.txt"
-        dev_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "system_prompt.txt")
+    # Load File-based prompt
+    user_path = settings.SYSTEM_PROMPT_FILE
+    bundled_path = "/app/system_prompt.txt"
+    dev_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "system_prompt.txt")
 
-        if not os.path.exists(user_path):
+    if not os.path.exists(user_path):
             source_path = bundled_path if os.path.exists(bundled_path) else dev_path
             if os.path.exists(source_path):
                 try:
@@ -40,14 +35,14 @@ def _load_system_prompt() -> str | None:
                 except Exception as e:
                     logger.warning(f"Could not auto-create {user_path}: {e}")
 
-        for path in [user_path, bundled_path, dev_path]:
-            if os.path.exists(path):
-                try:
-                    with open(path, "r", encoding="utf-8") as f:
-                        prompt = f.read().strip()
-                        break
-                except Exception as e:
-                    logger.warning(f"Failed to read system prompt from {path}: {e}")
+    for path in [user_path, bundled_path, dev_path]:
+        if os.path.exists(path):
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    prompt = f.read().strip()
+                    break
+            except Exception as e:
+                logger.warning(f"Failed to read system prompt from {path}: {e}")
 
     if not prompt:
         logger.warning("No system prompt found. Starting without system instruction.")

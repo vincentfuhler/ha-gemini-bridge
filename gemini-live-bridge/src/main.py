@@ -19,7 +19,6 @@ async def lifespan(app: FastAPI):
     # Load the Wake Word model synchronously on startup (to prevent timeouts on first audio interaction)
     wake_word_engine.load()
     
-    routine_engine.start()
     optimizer_service.start()
     
     # Start the Agentic Routine HA Event Listener
@@ -28,7 +27,6 @@ async def lifespan(app: FastAPI):
     yield
     
     logger.info("Shutting down HA Gemini Bridge...")
-    await routine_engine.stop()
     await optimizer_service.stop()
     
     event_task.cancel()
