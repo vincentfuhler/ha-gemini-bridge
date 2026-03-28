@@ -148,13 +148,23 @@ class Session:
         self.is_active = False
         wake_word_engine.reset()
         logger.info(f"[Session {self.session_id}] Deactivated. Gemini disconnected. Waiting for Wake Word.")
-        try:
-            asyncio.create_task(self.ha_ws.send_text('{"state": "connected"}'))
-        except Exception:
-            pass
+        
+        async def _safe_send_state():
+            try:
+                await self.ha_ws.send_text('{"state": "connected"}')
+            except Exception:
+                pass
+                
+        asyncio.create_task(_safe_send_state())
             
         if self.gemini_client.ws:
-            asyncio.create_task(self.gemini_client.close())
+            async def _safe_close():
+                try:
+                    await self.gemini_client.close()
+                except Exception:
+                    pass
+            asyncio.create_task(_safe_close())
+            
         if self.gemini_task:
             self.gemini_task.cancel()
             self.gemini_task = None
