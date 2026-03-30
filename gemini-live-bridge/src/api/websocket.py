@@ -2,6 +2,8 @@ import uuid
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from src.core.session import Session
+from src.core.training import TrainingSession
+from src.config import settings
 from src.logging import setup_logger
 
 logger = setup_logger("api_websocket")
@@ -16,7 +18,12 @@ async def ha_voice_websocket(websocket: WebSocket):
     session_id = str(uuid.uuid4())
     logger.info(f"New WebSocket connection requested. Session ID: {session_id}")
     
-    session = Session(websocket, session_id)
+    if settings.TRAINING_MODE:
+        session = TrainingSession(websocket, session_id)
+        logger.info(f"Starting TRAINING Session {session_id}")
+    else:
+        session = Session(websocket, session_id)
+        
     try:
         await session.start()
     except WebSocketDisconnect:

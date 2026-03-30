@@ -38,6 +38,7 @@ class Settings(BaseSettings):
     HOST: str = "0.0.0.0"
     PORT: int = 8000
     LOG_LEVEL: str = "INFO"
+    TRAINING_MODE: bool = False
 
     # Audio
     SAMPLE_RATE: int = 16000

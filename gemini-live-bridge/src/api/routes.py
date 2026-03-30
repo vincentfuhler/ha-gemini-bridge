@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Form
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse
 import os
 import logging
 from src.core.wakeword import wake_word_engine
@@ -55,6 +55,10 @@ async def prompt_editor_ui():
                     <span class="status">{status_message}</span>
                 </div>
             </form>
+            <hr style="border: 0; height: 1px; background: #444; margin-top: 30px; margin-bottom: 20px;">
+            <h2>🎙️ Wake-Word Trainingsmodus</h2>
+            <p>Wenn du den Trainingsmodus in den Add-on Einstellungen (oder Optionen) aktiviert hast, kannst du hier die gesammelten Wake-Word Audiodaten exportieren.</p>
+            <a href="/api/training/download" style="display: inline-block; background-color: #4caf50; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; font-weight: bold;">📥 ZIP herunterladen</a>
         </div>
     </body>
     </html>
@@ -126,3 +130,17 @@ async def deactivate():
 async def status():
     """Get current activation state."""
     return {"bridge_active": _bridge_active}
+
+
+@router.get("/api/training/download")
+async def download_training_data():
+    """Download the generated training data zip file."""
+    file_path = "/data/training_data.zip"
+    if os.path.exists(file_path):
+        return FileResponse(file_path, filename="training_data.zip", media_type="application/zip")
+    return HTMLResponse(
+        "<h2 style='color: white; font-family: sans-serif; background: #222; padding: 20px; text-align: center;'>"
+        "Trainingsdaten (ZIP) nicht gefunden. Läuft der Trainingsmodus? Hast du den ESP32 bereits alle Samples aufnehmen lassen?"
+        "</h2>", 
+        status_code=404
+    )
