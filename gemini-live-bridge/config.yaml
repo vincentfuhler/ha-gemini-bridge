@@ -1,6 +1,6 @@
 name: "Gemini Live Bridge"
 description: "A high-performance bridge service connecting Home Assistant Voice to the Gemini Live API."
-version: "1.5.1"
+version: "1.5.2"
 slug: "gemini_bridge"
 init: false
 map:
