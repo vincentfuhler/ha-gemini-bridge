@@ -36,8 +36,9 @@ class TrainingSession:
 
         self.TARGET_BYTES = 3 * 16000 * 2  # 3 seconds * 16000 samples/sec * 2 bytes/sample
 
-    async def start(self):
-        await self.ha_ws.accept()
+    async def start(self, already_accepted: bool = False):
+        if not already_accepted:
+            await self.ha_ws.accept()
         logger.info(f"[Training {self.session_id}] Training mode gestartet.")
         os.makedirs(TRAINING_DIR, exist_ok=True)
         
