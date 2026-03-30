@@ -58,9 +58,6 @@ class TrainingSession:
                 logger.info(f"[Training {self.session_id}] Starte 20x Positiv-Aufnahmen.")
                 for i in range(1, 21):
                     logger.info(f"[Training {self.session_id}] Aufnahme {i}/20 gestartet.")
-                    await self._play_pings(1)
-                    # Flush exactly 1.5 seconds of audio from the buffer to skip the ping echo
-                    await self._flush_audio(1.5)
                     
                     audio_data = await self._record_seconds(3.0)
                     file_path = os.path.join(TRAINING_DIR, f"{i}_positiv.wav")
