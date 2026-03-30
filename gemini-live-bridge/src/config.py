@@ -16,8 +16,8 @@ if os.path.exists(options_path):
 class Settings(BaseSettings):
     # Gemini
     GEMINI_API_KEY: str
-    GEMINI_MODEL: str = "models/gemini-2.5-flash-live-preview"
-    GEMINI_VOICE: str = "Puck"  # Aoede, Charon, Fenrir, Kore, Puck
+    GEMINI_MODEL: str = "models/gemini-3.1-flash-live-preview"
+    GEMINI_VOICE: str = "Nova"  # Aoede, Charon, Fenrir, Kore, Puck, Nova
 
     # Home Assistant API (for function calling)
     HA_URL: str = "http://supervisor/core"   # Default inside HA addon

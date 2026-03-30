@@ -121,7 +121,7 @@ class GeminiLiveClient:
                     "speechConfig": {
                         "voiceConfig": {
                             "prebuiltVoiceConfig": {
-                                "voiceName": self.voice
+                                "voiceName": self.voice.capitalize()
                             }
                         }
                     }
