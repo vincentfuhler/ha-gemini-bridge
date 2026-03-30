@@ -221,6 +221,18 @@ HA_TOOLS = [
                     "type": "OBJECT",
                     "properties": {}
                 }
+            },
+            {
+                "name": "start_training_mode",
+                "description": (
+                    "Start the wake-word training mode for the connected ESP32 microphone. "
+                    "Use this EXCLUSIVELY when the user explicitly asks you to 'train the wake word', 'start training mode', or 'train the computer'. "
+                    "You do NOT need to say goodbye. Just execute this function immediately. The training will automatically begin with a ping sound."
+                ),
+                "parameters": {
+                    "type": "OBJECT",
+                    "properties": {}
+                }
             }
         ]
     }

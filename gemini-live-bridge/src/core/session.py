@@ -43,6 +43,7 @@ class Session:
         
         self.gemini_client = GeminiLiveClient()
         self.gemini_client.on_conversation_end = self.deactivate
+        self.gemini_client.on_training_requested = self._trigger_training
         
         self.tasks: list[asyncio.Task] = []
         
@@ -81,7 +82,12 @@ class Session:
         # Interruption Flag
         self.interrupted = False
 
-    async def start(self):
+    def _trigger_training(self):
+        """Called when Gemini executes the 'start_training_mode' tool."""
+        self.switch_to_training = True
+        self.deactivate()
+
+    async def start(self) -> str:
         """Starts the session by connecting to Gemini and beginning the duplex stream."""
         await self.ha_ws.accept()
         logger.info(f"[Session {self.session_id}] Intercom started. Waiting for wake word.")
@@ -93,18 +99,29 @@ class Session:
         # The session lives as long as the HA WebSocket is alive
         try:
             await self._ha_to_gemini_loop()
+        except asyncio.CancelledError:
+            pass
         except Exception as e:
             logger.error(f"[Session {self.session_id}] Task error: {e}")
-        finally:
-            await self.cleanup()
+
+        if getattr(self, "switch_to_training", False):
+            logger.info(f"[Session {self.session_id}] Handoff to TrainingSession requested.")
+            await self.cleanup(close_ha_ws=False)
+            return "SWITCH_TO_TRAINING"
+
+        await self.cleanup()
+        return "ENDED"
 
     async def _ha_to_gemini_loop(self):
         """Reads audio chunks from Home Assistant and forwards them to Gemini."""
         try:
-            while True:
+            while not getattr(self, "switch_to_training", False):
                 # Based on HA format, it might be text or bytes. 
                 # Assuming raw binary audio frames for this implementation.
                 message = await self.ha_ws.receive()
+                
+                if getattr(self, "switch_to_training", False):
+                    break
                 
                 if message.get("bytes"):
                     pcm_bytes = message["bytes"]
@@ -395,7 +412,7 @@ class Session:
             logger.error(f"[Session {self.session_id}] Error sending to HA: {e}")
             raise  # Will propagate and cancel loops
 
-    async def cleanup(self):
+    async def cleanup(self, close_ha_ws=True):
         """Cleans up sockets and tasks."""
         logger.info(f"[Session {self.session_id}] Cleaning up session.")
         Session.active_sessions.discard(self)
@@ -406,7 +423,8 @@ class Session:
                 
         await self.gemini_client.close()
         
-        try:
-            await self.ha_ws.close()
-        except Exception:
-            pass
+        if close_ha_ws:
+            try:
+                await self.ha_ws.close()
+            except Exception:
+                pass

@@ -25,7 +25,11 @@ async def ha_voice_websocket(websocket: WebSocket):
         session = Session(websocket, session_id)
         
     try:
-        await session.start()
+        result = await session.start()
+        if result == "SWITCH_TO_TRAINING":
+            logger.info(f"🔄 Dynamically switching connection {session_id} to Training Mode!")
+            t_session = TrainingSession(websocket, session_id)
+            await t_session.start()
     except WebSocketDisconnect:
         logger.info(f"Client disconnected gracefully: {session_id}")
     except Exception as e:
