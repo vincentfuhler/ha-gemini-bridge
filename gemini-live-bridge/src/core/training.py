@@ -21,9 +21,10 @@ class TrainingSession:
     """
     Spezielle Session für die Erstellung von Wake-Word Trainingsdaten.
     """
-    def __init__(self, websocket: WebSocket, session_id: str):
+    def __init__(self, websocket: WebSocket, session_id: str, mode: str = "positive"):
         self.ha_ws = websocket
         self.session_id = session_id
+        self.mode = mode
         
         q = websocket.query_params
         self.in_rate = int(q.get("in_rate", 16000))
@@ -45,42 +46,46 @@ class TrainingSession:
         try:
             # Idle Status schicken
             await self.ha_ws.send_text('{"state": "listening"}')
-            await asyncio.sleep(2)  # Kurze Pause nach dem Verbinden
+            await asyncio.sleep(1)  # Kurze Pause nach dem Verbinden
             
-            # 1. 100x Positiv
-            logger.info(f"[Training {self.session_id}] Starte 100x Positiv-Aufnahmen.")
-            for i in range(1, 101):
-                await self._play_pings(1)
-                await asyncio.sleep(0.5) # Warte kurz auf den Speaker
+            if self.mode == "positive":
+                # Clean up existing files before starting positive training
+                for f in os.listdir(TRAINING_DIR):
+                    if f.endswith(".wav"):
+                        os.remove(os.path.join(TRAINING_DIR, f))
+                logger.info(f"[Training {self.session_id}] Alter Ordner aufgeräumt.")
                 
-                audio_data = await self._record_seconds(3.0)
-                file_path = os.path.join(TRAINING_DIR, f"{i}_postiv.wav")
-                self._save_wav(audio_data, file_path)
-                logger.debug(f"Positiv {i}/100 gespeichert.")
-
-            # 2. 3 Pings vor Negativ
-            logger.info(f"[Training {self.session_id}] 3 Pings als Trennsignal.")
-            await self._play_pings(3)
-            await asyncio.sleep(1.0)
-            
-            # 3. 100x Negativ (ohne Pings dazwischen)
-            logger.info(f"[Training {self.session_id}] Starte 100x Negativ-Aufnahmen nahtlos.")
-            for i in range(1, 101):
-                audio_data = await self._record_seconds(3.0)
-                file_path = os.path.join(TRAINING_DIR, f"{i}_negativ.wav")
-                self._save_wav(audio_data, file_path)
-                logger.debug(f"Negativ {i}/100 gespeichert.")
-
-            # 4. 5 Pings als Abschluss
+                logger.info(f"[Training {self.session_id}] Starte 20x Positiv-Aufnahmen.")
+                for i in range(1, 21):
+                    logger.info(f"[Training {self.session_id}] Aufnahme {i}/20 gestartet.")
+                    await self._play_pings(1)
+                    # Flush exactly 1.5 seconds of audio from the buffer to skip the ping echo
+                    await self._flush_audio(1.5)
+                    
+                    audio_data = await self._record_seconds(3.0)
+                    file_path = os.path.join(TRAINING_DIR, f"{i}_positiv.wav")
+                    self._save_wav(audio_data, file_path)
+                    logger.debug(f"[Training {self.session_id}] Positiv {i}/20 gespeichert.")
+                    
+            elif self.mode == "negative":
+                logger.info(f"[Training {self.session_id}] Starte 20x Negativ-Aufnahmen nahtlos.")
+                for i in range(1, 21):
+                    logger.info(f"[Training {self.session_id}] Aufnahme {i}/20 gestartet.")
+                    audio_data = await self._record_seconds(3.0)
+                    file_path = os.path.join(TRAINING_DIR, f"{i}_negativ.wav")
+                    self._save_wav(audio_data, file_path)
+                    logger.debug(f"[Training {self.session_id}] Negativ {i}/20 gespeichert.")
+                    
+            # 5 Pings als Abschluss
             logger.info(f"[Training {self.session_id}] 5 Pings als Abschluss.")
             await self._play_pings(5)
             
-            # 5. ZIP erstellen
+            # ZIP aktualisieren (überschreibt existierende zip und nimmt alles aus dem Ordner)
             self._create_zip()
             
             # Fertig status
             await self.ha_ws.send_text('{"state": "idle"}')
-            logger.info(f"[Training {self.session_id}] Trainingsmodus erfolgreich abgeschlossen!")
+            logger.info(f"[Training {self.session_id}] {self.mode.capitalize()}-Trainingsmodus erfolgreich abgeschlossen!")
             
             # Session weiter offen halten, damit er nicht rebooted
             while True:
@@ -92,6 +97,27 @@ class TrainingSession:
             logger.error(f"[Training {self.session_id}] Fehler im Training: {e}")
         finally:
             await self.cleanup()
+
+    async def _flush_audio(self, seconds: float):
+        """Wirft Audiodaten für X Sekunden weg, um das Ping-Echo zu verwerfen."""
+        target_bytes = int(seconds * 16000 * 2)
+        bytes_dropped = 0
+        
+        while bytes_dropped < target_bytes:
+            try:
+                message = await asyncio.wait_for(self.ha_ws.receive(), timeout=1.0)
+                if message.get("bytes"):
+                    pcm_bytes = message["bytes"]
+                    if self.in_channels == 2:
+                        pcm_bytes = audioop.tomono(pcm_bytes, self.in_depth // 8, 1.0, 0.0)
+                    if self.in_depth != 16:
+                        pcm_bytes = audioop.lin2lin(pcm_bytes, self.in_depth // 8, 2)
+                    if self.in_rate != 16000:
+                        pcm_bytes, _ = audioop.ratecv(pcm_bytes, 2, 1, self.in_rate, 16000, None)
+                        
+                    bytes_dropped += len(pcm_bytes)
+            except asyncio.TimeoutError:
+                break
 
     async def _record_seconds(self, seconds: float) -> bytearray:
         """Sammelt Audio Daten bis die gewünschte Länge erreicht ist (in 16kHz, 16-bit Mono)."""
@@ -131,7 +157,7 @@ class TrainingSession:
                     if file.endswith('.wav'):
                         file_path = os.path.join(root, file)
                         zipf.write(file_path, arcname=file)
-                        os.remove(file_path) # Aufräumen der einzelnen Files nach dem Zippen
+                        # Dateien bewusst NICHT mehr löschen, damit Negativ sie später mit-zippt.
         logger.info(f"[Training {self.session_id}] ZIP Archiv bereit: {ZIP_FILE_PATH}")
 
     async def _play_pings(self, count: int):

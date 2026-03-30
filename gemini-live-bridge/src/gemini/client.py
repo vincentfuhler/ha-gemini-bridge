@@ -104,7 +104,7 @@ class GeminiLiveClient:
         self.on_conversation_end: Callable[[], None] | None = None
         
         # Callback triggered when Gemini invokes start_training_mode
-        self.on_training_requested: Callable[[], None] | None = None
+        self.on_training_requested: Callable[[str], None] | None = None
 
     async def connect(self, extra_system_prompt: str = None):
         """Establish the WebSocket connection to Gemini and send setup config."""
@@ -324,10 +324,11 @@ class GeminiLiveClient:
                 return {"success": True, "note": "Conversation ended. Mic is now muted."}
 
             elif fn_name == "start_training_mode":
-                logger.info("🎙️ Gemini requested to start Training Mode! Handing over session.")
+                mode = args.get("mode", "positive")
+                logger.info(f"🎙️ Gemini requested to start {mode.capitalize()} Training Mode! Handing over session.")
                 if self.on_training_requested:
-                    self.on_training_requested()
-                return {"success": True, "note": "Training starting now."}
+                    self.on_training_requested(mode)
+                return {"success": True, "note": f"{mode.capitalize()} training starting now. Please stop talking immediately."}
 
             else:
                 return {"error": f"Unknown function: {fn_name}"}

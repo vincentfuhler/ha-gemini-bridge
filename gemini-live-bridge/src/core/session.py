@@ -82,9 +82,10 @@ class Session:
         # Interruption Flag
         self.interrupted = False
 
-    def _trigger_training(self):
+    def _trigger_training(self, mode: str = "positive"):
         """Called when Gemini executes the 'start_training_mode' tool."""
         self.switch_to_training = True
+        self._training_mode_requested = mode
         self.deactivate()
 
     async def start(self) -> str:
@@ -105,9 +106,10 @@ class Session:
             logger.error(f"[Session {self.session_id}] Task error: {e}")
 
         if getattr(self, "switch_to_training", False):
-            logger.info(f"[Session {self.session_id}] Handoff to TrainingSession requested.")
+            mode = getattr(self, "_training_mode_requested", "positive")
+            logger.info(f"[Session {self.session_id}] Handoff to TrainingSession ({mode}) requested.")
             await self.cleanup(close_ha_ws=False)
-            return "SWITCH_TO_TRAINING"
+            return f"SWITCH_TO_TRAINING:{mode}"
 
         await self.cleanup()
         return "ENDED"

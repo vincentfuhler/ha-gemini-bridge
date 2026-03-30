@@ -231,7 +231,14 @@ HA_TOOLS = [
                 ),
                 "parameters": {
                     "type": "OBJECT",
-                    "properties": {}
+                    "properties": {
+                        "mode": {
+                            "type": "STRING",
+                            "enum": ["positive", "negative"],
+                            "description": "Whether to start 'positive' training (saying the wake-word) or 'negative' training (recording background noise)."
+                        }
+                    },
+                    "required": ["mode"]
                 }
             }
         ]
