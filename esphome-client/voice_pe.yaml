@@ -42,7 +42,9 @@ wifi:
                     call.set_rgb(0.0, 1.0, 0.0);
                     call.perform();
                 } else if (state == "idle") {
-                    auto call = id(led_ring).turn_off();
+                    auto call = id(led_ring).turn_on();
+                    call.set_effect("None");
+                    call.set_rgb(0.0, 0.0, 0.0);
                     call.perform();
                 }
             });
