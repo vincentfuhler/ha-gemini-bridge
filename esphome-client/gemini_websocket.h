@@ -156,6 +156,10 @@ class GeminiWebSocketClient : public Component {
     esp_websocket_client_config_t cfg = {};
     cfg.uri = url_.c_str();
     cfg.reconnect_timeout_ms = 1000; // Increased reconnect speed
+    cfg.network_timeout_ms = 60000;
+    cfg.pingpong_timeout_sec = 120;
+    // Set keep-alive to true just in case the firewall kills it
+    cfg.disable_auto_reconnect = false;
     client_ = esp_websocket_client_init(&cfg);
     esp_websocket_register_events(client_, WEBSOCKET_EVENT_ANY,
                                   &GeminiWebSocketClient::websocket_event_handler, this);
@@ -165,9 +169,9 @@ class GeminiWebSocketClient : public Component {
     if (mic_ != nullptr) {
         mic_->add_data_callback([this](const std::vector<uint8_t> &data) {
             if (client_ != nullptr && esp_websocket_client_is_connected(client_)) {
-                // BUGFIX: Use a maximum upload timeout of 20ms instead of unendless portMAX_DELAY.
+                // BUGFIX: Use a maximum upload timeout of 50ms instead of unendless portMAX_DELAY.
                 // If it blocks from bad WiFi, drop this chunk so we don't crash the I2S/Watchdog.
-                esp_websocket_client_send_bin(client_, (const char*)data.data(), data.size(), pdMS_TO_TICKS(20));
+                esp_websocket_client_send_bin(client_, (const char*)data.data(), data.size(), pdMS_TO_TICKS(50));
             }
         });
         mic_->start();

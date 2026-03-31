@@ -153,6 +153,10 @@ class Session:
                 # Assuming raw binary audio frames for this implementation.
                 message = await self.ha_ws.receive()
                 
+                if message.get("type") == "websocket.disconnect":
+                    logger.info(f"[Session {self.session_id}] ESP32 Client disconnected from WebSocket natively.")
+                    break
+
                 if getattr(self, "switch_to_training", False):
                     break
                 
