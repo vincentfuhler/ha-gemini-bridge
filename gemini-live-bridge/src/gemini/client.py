@@ -135,22 +135,30 @@ class GeminiLiveClient:
                     "speechConfig": {
                         "voiceConfig": {
                             "prebuiltVoiceConfig": {
-                                "voiceName": self.voice.capitalize()
+                                # "Kore" ist für den Enterprise-Vibe am besten geeignet
+                                "voiceName": self.voice.capitalize() 
                             }
                         }
                     }
                 },
-                # Declare function calling tools
                 "tools": HA_TOOLS,
             }
         }
+        
+        persona_prompt = (
+            "Verhalte dich wie ein neutrales Computer-Interface eines Raumschiffs. "
+            "Antworte rein sachlich, präzise und ohne menschliche Emotionen. "
+            "Vermeide Floskeln wie 'Gerne helfe ich dir' oder 'Hallo!'. "
+            "Nutze eine monotone, funktionale Ausdrucksweise."
+        )
 
         # Attach system prompt if available
-        combined_prompt = "\n\n".join(filter(None, [system_prompt, extra_system_prompt]))
+        combined_prompt = "\n\n".join(filter(None, [persona_prompt, system_prompt, extra_system_prompt]))
         if combined_prompt:
             setup_msg["setup"]["systemInstruction"] = {
                 "parts": [{"text": combined_prompt}]
             }
+
 
         await self.ws.send(json.dumps(setup_msg))
 
