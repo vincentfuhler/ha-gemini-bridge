@@ -81,6 +81,10 @@ class Session:
         
         # Interruption Flag
         self.interrupted = False
+        
+        # Cooldown timer: Prevent wake words forming out of end-of-conversation echoes
+        self.ignore_wakeword_until = 0.0
+
 
     def _trigger_training(self, mode: str = "positive"):
         """Called when Gemini executes the 'start_training_mode' tool."""
@@ -160,6 +164,10 @@ class Session:
                     # 3. Gate: only forward mic audio to Gemini when bridge is active.
                     # If inactive, we use this audio purely for Wake Word detection!
                     if not self.is_active:
+                        if time.time() < getattr(self, "ignore_wakeword_until", 0.0):
+                            self.pre_buffer.clear()
+                            continue
+
                         self.pre_buffer.extend(pcm_bytes)
                         if len(self.pre_buffer) > self.PRE_BUFFER_SIZE:
                             # Keep only the latest PRE_BUFFER_SIZE bytes
@@ -215,8 +223,10 @@ class Session:
 
     def deactivate(self):
         self.is_active = False
+        self.ignore_wakeword_until = time.time() + 1.5
         wake_word_engine.reset()
-        logger.info(f"[Session {self.session_id}] Deactivated. Gemini disconnected. Waiting for Wake Word.")
+        self.pre_buffer.clear()
+        logger.info(f"[Session {self.session_id}] Deactivated. Gemini disconnected. Wake word paused for 1.5s.")
         
         asyncio.create_task(self._update_ha_entity(False))
         

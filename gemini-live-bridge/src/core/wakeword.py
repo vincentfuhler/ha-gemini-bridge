@@ -24,25 +24,16 @@ class WakeWordEngine:
             logger.info("Checking and downloading core openwakeword models (melspectrogram, etc)...")
             download_models()
             
-            target = settings.WAKE_WORD
-            logger.info(f"Loading openwakeword model: {target}")
+            target = "computer"
+            target_path_local = os.path.join(os.path.dirname(__file__), "..", "..", "wakewords", f"{target}.onnx")
+            logger.info(f"Loading bundled openwakeword model: {target_path_local}")
             
-            # Check if the user has a custom model in /config/wakewords/ (Home Assistant Addon)
-            target_path_config = os.path.join(settings.CUSTOM_WAKE_WORD_DIR, f"{target}.tflite")
-            target_path_local = os.path.join(os.path.dirname(__file__), "..", "..", "wakewords", f"{target}.tflite")
-            
-            if os.path.exists(target_path_config):
-                logger.info(f"Found custom tflite model at {target_path_config}")
-                self.model = Model(wakeword_models=[target_path_config], inference_framework="tflite")
-            elif os.path.exists(target_path_local):
-                logger.info(f"Found bundled custom tflite model directly in code at {target_path_local}")
-                self.model = Model(wakeword_models=[target_path_local], inference_framework="tflite")
+            if os.path.exists(target_path_local):
+                self.model = Model(wakeword_models=[target_path_local], inference_framework="onnx")
+                self.is_loaded = True
+                logger.info(f"✅ Wake Word Engine fully loaded: {target}.onnx")
             else:
-                logger.info(f"Using built-in openwakeword model: {target}")
-                self.model = Model(wakeword_models=[target], inference_framework="onnx")
-                
-            self.is_loaded = True
-            logger.info(f"✅ Wake Word Engine fully loaded: {target}")
+                logger.error(f"Cannot find bundled openwakeword model at: {target_path_local}")
             
         except ImportError:
             logger.error("openwakeword not installed. Cannot use local wake word detection.")
