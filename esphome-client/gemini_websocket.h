@@ -82,7 +82,7 @@ class GeminiWebSocketClient : public Component {
             continue;
         }
 
-        std::lock_guard<std::mutex> lock(self->audio_mutex_);
+        std::unique_lock<std::mutex> lock(self->audio_mutex_);
         if (self->avail_len_ == 0) continue;
 
         // Pre-buffer ~85ms of audio before starting playback to prevent stuttering
@@ -94,12 +94,29 @@ class GeminiWebSocketClient : public Component {
         if (contiguous > self->avail_len_) contiguous = self->avail_len_;
         if (contiguous > 2048) contiguous = 2048;
 
-        size_t written = self->speaker_->play(self->audio_buffer_ + self->read_idx_, contiguous);
+        uint8_t* play_ptr = self->audio_buffer_ + self->read_idx_;
+        lock.unlock(); // ENTSPERREN: Netzwerk-Thread kann jetzt wieder arbeiten!
+
+        // BLOCKIERENDER HARDWARE-CALL (Netzwerk traffic läuft im Hintergrund munter weiter!)
+        size_t written = self->speaker_->play(play_ptr, contiguous);
+
+        lock.lock(); // SPERREN: Variablen sauber updaten
         self->total_bytes_played_ += written;
 
         if (written == 0) {
             self->play_zero_counter_++;
+            lock.unlock();
             vTaskDelay(pdMS_TO_TICKS(1));
+            
+            // Hardware Freeze Recovery built-in here:
+            if (self->play_zero_counter_ > 500) {
+                 ESP_LOGW("gemini_ws", "Speaker I2S blocked for 500ms, restarting DMA engine...");
+                 self->speaker_->stop();
+                 vTaskDelay(pdMS_TO_TICKS(10));
+                 self->speaker_->start();
+                 self->play_zero_counter_ = 0;
+            }
+            continue;
         } else {
             self->play_zero_counter_ = 0;
             if (!self->first_audio_played_) {
@@ -139,7 +156,9 @@ class GeminiWebSocketClient : public Component {
     if (mic_ != nullptr) {
         mic_->add_data_callback([this](const std::vector<uint8_t> &data) {
             if (client_ != nullptr && esp_websocket_client_is_connected(client_)) {
-                esp_websocket_client_send_bin(client_, (const char*)data.data(), data.size(), portMAX_DELAY);
+                // BUGFIX: Use a maximum upload timeout of 20ms instead of unendless portMAX_DELAY.
+                // If it blocks from bad WiFi, drop this chunk so we don't crash the I2S/Watchdog.
+                esp_websocket_client_send_bin(client_, (const char*)data.data(), data.size(), pdMS_TO_TICKS(20));
             }
         });
         mic_->start();
