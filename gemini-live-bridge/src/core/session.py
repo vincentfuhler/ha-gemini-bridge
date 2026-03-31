@@ -18,6 +18,7 @@ class Session:
     Manages a single conversation session between a Home Assistant client and Gemini.
     """
     active_sessions: set["Session"] = set()
+    continuous_mode: bool = False
     
     @classmethod
     async def shutdown_all(cls):
@@ -127,6 +128,10 @@ class Session:
             await self.ha_ws.send_text('{"state": "idle"}')
         except Exception:
             pass
+            
+        if Session.continuous_mode:
+            logger.info(f"[Session {self.session_id}] Continuous Mode ON - Activating Immediately!")
+            asyncio.create_task(self.activate())
 
         # The session lives as long as the HA WebSocket is alive
         try:
@@ -284,6 +289,10 @@ class Session:
             self.watchdog_task.cancel()
             self.watchdog_task = None
             
+        if Session.continuous_mode and not getattr(self, "switch_to_training", False):
+            logger.info(f"🔄 [Session {self.session_id}] Continuous Mode ON: Auto-restarting Gemini connection...")
+            asyncio.create_task(self.activate())
+            
     async def _run_gemini_task(self):
         """Wrapper to run the Gemini receive loop and deactivate on exit or crash."""
         try:
@@ -312,12 +321,19 @@ class Session:
         
         logger.info(f"[Session {self.session_id}] 🚀 Connecting to Gemini Live API...")
         try:
-            verify_msg = (
-                "Systemhinweis: "
-                "Bitte prüfe das initial empfangene 3.0s Audio-Fragment genau. "
-                "Wurde darin das Aktivierungswort 'Computer' wirklich absichtlich an dich gerichtet gesagt? "
-                "Wenn es nur leises Rauschen, TV im Hintergrund oder ein unbeabsichtigtes Wort war, antworte absolut NICHTS und rufe SOFORT zwingend die Funktion 'end_conversation' auf."
-            ) if self.pre_buffer else None
+            if Session.continuous_mode:
+                verify_msg = (
+                    "Systemhinweis: Das System befindet sich jetzt im Dauer-Zuhör-Modus (Permanent Listening). "
+                    "Du bist durchgängig verbunden. Bitte begrüße den Nutzer NICHT. Warte einfach stumm im Hintergrund. "
+                    "Antworte erst, wenn der Nutzer dich etwas fragt oder explizit anspricht."
+                )
+            else:
+                verify_msg = (
+                    "Systemhinweis: "
+                    "Bitte prüfe das initial empfangene 3.0s Audio-Fragment genau. "
+                    "Wurde darin das Aktivierungswort 'Computer' wirklich absichtlich an dich gerichtet gesagt? "
+                    "Wenn es nur leises Rauschen, TV im Hintergrund oder ein unbeabsichtigtes Wort war, antworte absolut NICHTS und rufe SOFORT zwingend die Funktion 'end_conversation' auf."
+                ) if self.pre_buffer else None
             
             await self.gemini_client.connect(verify_msg)
             
@@ -346,6 +362,10 @@ class Session:
 
     async def _inactivity_watchdog(self):
         """Monitors session for silence and prompts Gemini to cleanly exit if forgotten."""
+        if Session.continuous_mode:
+            logger.info(f"[Session {self.session_id}] ⏱️ Watchdog completely disabled (Continuous Mode ON).")
+            return
+            
         try:
             while self.is_active:
                 await asyncio.sleep(2)
