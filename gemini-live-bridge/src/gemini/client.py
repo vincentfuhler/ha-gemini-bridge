@@ -131,12 +131,12 @@ class GeminiLiveClient:
             "setup": {
                 "model": self.model,
                 "generationConfig": {
-                    "responseModalities": ["AUDIO"]
-                },
-                "speechConfig": {
-                    "voiceConfig": {
-                        "prebuiltVoiceConfig": {
-                            "voiceName": self.voice.capitalize()
+                    "responseModalities": ["AUDIO"],
+                    "speechConfig": {
+                        "voiceConfig": {
+                            "prebuiltVoiceConfig": {
+                                "voiceName": self.voice.capitalize()
+                            }
                         }
                     }
                 },
