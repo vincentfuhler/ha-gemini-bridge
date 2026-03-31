@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     # Gemini
     GEMINI_API_KEY: str
     GEMINI_MODEL: str = "models/gemini-3.1-flash-live-preview"
-    GEMINI_VOICE: str = "Nova"  # Aoede, Charon, Fenrir, Kore, Puck, Nova
+    GEMINI_VOICE: str = "Puck"  # Aoede, Charon, Fenrir, Kore, Puck
 
     # Home Assistant API (for function calling)
     HA_URL: str = "http://supervisor/core"   # Default inside HA addon
