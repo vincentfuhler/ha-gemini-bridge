@@ -289,7 +289,7 @@ class Session:
             self.watchdog_task.cancel()
             self.watchdog_task = None
             
-        if Session.continuous_mode and not getattr(self, "switch_to_training", False):
+        if Session.continuous_mode and not getattr(self, "switch_to_training", False) and self in Session.active_sessions:
             logger.info(f"🔄 [Session {self.session_id}] Continuous Mode ON: Auto-restarting Gemini connection...")
             asyncio.create_task(self.activate())
             
