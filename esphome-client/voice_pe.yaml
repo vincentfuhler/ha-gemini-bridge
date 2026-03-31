@@ -1,7 +1,7 @@
 substitutions:
   name: "gemini-voice-pe"
   friendly_name: "Gemini Voice PE"
-  websocket_url: "ws://10.3.0.41:8000/ws?in_depth=32&in_channels=2&in_rate=16000&out_depth=16&out_rate=48000&out_channels=2"
+  websocket_url: "ws://10.1.0.100:8000/ws?in_depth=32&in_channels=2&in_rate=16000&out_depth=16&out_rate=48000&out_channels=2"
 
 esphome:
   name: "${name}"
@@ -18,8 +18,8 @@ packages:
 
 # ─── Network ──────────────────────────────────────────────────────────────────
 wifi:
-  ssid: "Paul Walter"
-  password: "paulwalter"
+  ssid: "HEPTACOM"
+  password: "peter132!"
   reboot_timeout: 0s
   on_connect:
     - lambda: |-
@@ -40,6 +40,9 @@ wifi:
                     auto call = id(led_ring).turn_on();
                     call.set_effect("None");
                     call.set_rgb(0.0, 1.0, 0.0);
+                    call.perform();
+                } else if (state == "idle") {
+                    auto call = id(led_ring).turn_off();
                     call.perform();
                 }
             });

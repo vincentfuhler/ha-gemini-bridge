@@ -225,6 +225,9 @@ class GeminiWebSocketClient : public Component {
                 else if (payload.find("\"state\": \"connected\"") != std::string::npos) {
                     if (self->on_state_callback_) self->on_state_callback_("connected");
                 }
+                else if (payload.find("\"state\": \"idle\"") != std::string::npos) {
+                    if (self->on_state_callback_) self->on_state_callback_("idle");
+                }
             }
             else if (data->op_code == 2 && self->speaker_ != nullptr) {
                 std::lock_guard<std::mutex> lock(self->audio_mutex_);

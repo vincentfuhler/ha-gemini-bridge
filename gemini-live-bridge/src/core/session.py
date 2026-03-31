@@ -302,7 +302,7 @@ class Session:
         asyncio.create_task(self._update_ha_entity(True))
         
         try:
-            await self.ha_ws.send_text('{"state": "gemini_active"}')
+            await self.ha_ws.send_text('{"state": "listening"}')
         except Exception:
             pass
         
