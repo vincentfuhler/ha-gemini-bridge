@@ -159,7 +159,6 @@ class GeminiWebSocketClient : public Component {
     cfg.network_timeout_ms = 60000;
     cfg.pingpong_timeout_sec = 120;
     cfg.buffer_size = 16384;     // IMPORTANT: Handle massive 38KB python audio frames without LwIP fragment exhaustion
-    cfg.rx_buffer_size = 16384;
     // Set keep-alive to true just in case the firewall kills it
     cfg.disable_auto_reconnect = false;
     client_ = esp_websocket_client_init(&cfg);
