@@ -74,6 +74,17 @@ def _load_system_prompt() -> str | None:
     except Exception as e:
         logger.warning(f"Could not inject optimized devices: {e}")
 
+    try:
+        from src.gemini.tools import HA_TOOLS
+        tools_list = HA_TOOLS[0]["functionDeclarations"]
+        prompt += "\n\n--- HINWEIS: BEREITGESTELLTE FUNKTIONEN (TOOLS) ---\n"
+        prompt += "Du kannst diese Funktionen aufrufen. Nutze sie aktiv, um die smarten Fähigkeiten des Hauses auszuschöpfen:\n"
+        for t in tools_list:
+            prompt += f"- {t['name']}: {t['description']}\n"
+        logger.info(f"Injected {len(tools_list)} tools into system prompt context")
+    except Exception as e:
+        logger.warning(f"Could not inject tools: {e}")
+
     logger.info(f"System prompt ready ({len(prompt)} chars)")
     return prompt
 
@@ -105,6 +116,9 @@ class GeminiLiveClient:
         
         # Callback triggered when Gemini invokes start_training_mode
         self.on_training_requested: Callable[[str], None] | None = None
+        
+        # Callback triggered when a scheduled countdown expires
+        self.on_timer_expired: Callable[[str], None] | None = None
 
     async def connect(self, extra_system_prompt: str = None):
         """Establish the WebSocket connection to Gemini and send setup config."""
@@ -329,6 +343,21 @@ class GeminiLiveClient:
                 if self.on_training_requested:
                     self.on_training_requested(mode)
                 return {"success": True, "note": f"{mode.capitalize()} training starting now. Please stop talking immediately."}
+
+            elif fn_name == "start_countdown":
+                seconds = args.get("seconds", 60)
+                context = args.get("context", "Unbekannter Timer")
+                
+                async def _countdown_task():
+                    logger.info(f"⏰ Timer started in background for {seconds}s: '{context}'")
+                    await asyncio.sleep(seconds)
+                    logger.info(f"⏰ Timer finished! Waking up bridge for context: '{context}'")
+                    if self.on_timer_expired:
+                        # We jump out of client scope to wake up the HA session
+                        self.on_timer_expired(context)
+                        
+                asyncio.create_task(_countdown_task())
+                return {"success": True, "note": f"Hintergrund-Timer gestartet für {seconds} Sekunden. Du wirst automatisch geweckt, wenn er abläuft. Sage nun 'Computer Ende', falls du keine weiteren Befehle hast."}
 
             else:
                 return {"error": f"Unknown function: {fn_name}"}

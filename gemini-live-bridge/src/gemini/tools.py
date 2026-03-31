@@ -240,6 +240,29 @@ HA_TOOLS = [
                     },
                     "required": ["mode"]
                 }
+            },
+            {
+                "name": "start_countdown",
+                "description": (
+                    "Start a background countdown timer that will wake you up when it finishes. "
+                    "Use this when the user asks you to remind them of something in a specific amount of time, "
+                    "or to wait a specific amount of time before doing something. "
+                    "Always say goodbye/Computer Ende after starting a long countdown if no immediate request follows."
+                ),
+                "parameters": {
+                    "type": "OBJECT",
+                    "properties": {
+                        "seconds": {
+                            "type": "NUMBER",
+                            "description": "The duration of the timer in full seconds (e.g. 60 for 1 minute)."
+                        },
+                        "context": {
+                            "type": "STRING",
+                            "description": "The context/reminder info. What exactly should you tell the user when the timer ends? (e.g. 'Die Pizza ist fertig.')"
+                        }
+                    },
+                    "required": ["seconds", "context"]
+                }
             }
         ]
     }

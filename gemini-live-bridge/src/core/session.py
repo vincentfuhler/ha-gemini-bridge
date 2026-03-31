@@ -44,6 +44,7 @@ class Session:
         self.gemini_client = GeminiLiveClient()
         self.gemini_client.on_conversation_end = self.deactivate
         self.gemini_client.on_training_requested = self._trigger_training
+        self.gemini_client.on_timer_expired = self._trigger_timer
         
         self.tasks: list[asyncio.Task] = []
         
@@ -91,6 +92,32 @@ class Session:
         self.switch_to_training = True
         self._training_mode_requested = mode
         self.deactivate()
+
+    def _trigger_timer(self, context: str):
+        """Called when a background countdown timer from Gemini finishes."""
+        async def _wake_and_notify():
+            logger.info(f"⏰ [Session {self.session_id}] BING! Timer expired (Context: {context})")
+            
+            # WAKE UP the AI if it is sleeping.
+            if not self.is_active:
+                logger.info(f"[Session {self.session_id}] ⏰ AI is sleeping. Forcing wake-up for timer!")
+                await self.activate()
+                
+            # Wait for connection to fully establish if we just activated it
+            timeout = 50  # 5 seconds max wait
+            while not self.gemini_client.ws and timeout > 0:
+                await asyncio.sleep(0.1)
+                timeout -= 1
+                
+            if self.gemini_client.ws:
+                msg = f"SYSTEM MESSAGE: Dein Hintergrund-Timer ist soeben abgelaufen! Grund/Kontext: '{context}'. Bitte sprich den Nutzer jetzt zwingend und sofort darauf an."
+                await self.gemini_client.send_text(msg)
+                # Play confirmation ding so user knows AI is listening
+                await self._play_ding()
+            else:
+                logger.warning(f"⏰ [Session {self.session_id}] Failed to wake up AI for timer (timeout).")
+
+        asyncio.create_task(_wake_and_notify())
 
     async def start(self) -> str:
         """Starts the session by connecting to Gemini and beginning the duplex stream."""
