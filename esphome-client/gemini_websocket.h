@@ -36,6 +36,8 @@ class GeminiWebSocketClient : public Component {
 
   TaskHandle_t playback_task_handle_ = nullptr;
   uint32_t last_connected_time_ = 0;
+  bool is_connected_ = false;
+  uint32_t last_disconnect_time_ = 0;
   std::function<void(std::string)> on_state_callback_;
 
  public:
@@ -147,8 +149,21 @@ class GeminiWebSocketClient : public Component {
   }
 
   void loop() override {
-      // esp_websocket_client has its own auto-reconnect logic.
-      // We removed the blocking watchdog loop to allow native rapid reconnects.
+      // esp_websocket_client has its own auto-reconnect logic,
+      // but if the Python bridge restarts abruptly, the TCP socket hangs permanently.
+      // This non-blocking watchdog forces a hard reset of the socket if disconnected for > 5s.
+      if (!is_connected_ && last_disconnect_time_ > 0) {
+          if (millis() - last_disconnect_time_ > 5000) {
+              ESP_LOGW("gemini_ws", "[Watchdog] 5s timeout reached. Forcing hard websocket client restart...");
+              if (client_ != nullptr) {
+                  esp_websocket_client_stop(client_);
+                  // Small breather for the TCP stack to process closure
+                  vTaskDelay(pdMS_TO_TICKS(150));
+                  esp_websocket_client_start(client_);
+              }
+              last_disconnect_time_ = millis(); // Reset timer to try again in 5s
+          }
+      }
   }
 
   // ─── WEBSOCKET EVENT HANDLER ──────────────────────────────────────────────
@@ -160,11 +175,15 @@ class GeminiWebSocketClient : public Component {
 
     switch (event_id) {
         case WEBSOCKET_EVENT_CONNECTED:
+            self->is_connected_ = true;
+            self->last_disconnect_time_ = 0;
             ESP_LOGI("gemini_ws", "[WS] Connected to Gemini Bridge! Streaming mic audio.");
             if (self->on_state_callback_) self->on_state_callback_("connected");
             break;
 
         case WEBSOCKET_EVENT_DISCONNECTED:
+            self->is_connected_ = false;
+            self->last_disconnect_time_ = millis();
             ESP_LOGW("gemini_ws", "[WS] Disconnected. Fast reconnect executing...");
             if (self->on_state_callback_) self->on_state_callback_("disconnected");
             self->speaker_started_ = false;

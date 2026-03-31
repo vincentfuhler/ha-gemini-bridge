@@ -20,6 +20,7 @@ packages:
 wifi:
   ssid: "Paul Walter"
   password: "paulwalter"
+  reboot_timeout: 0s
   on_connect:
     - lambda: |-
         if (id(gemini_client_ptr) == nullptr) {
@@ -51,6 +52,7 @@ wifi:
 api:
   encryption:
     key: "C14DR0lU9Ze3QMCUMxfiWurno9BXnNG+3zWwjleSepw="
+  reboot_timeout: 0s
 
 ota:
  - platform: esphome

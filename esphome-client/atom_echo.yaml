@@ -24,9 +24,11 @@ esp32:
 wifi:
   ssid: "HEPTACOM UID_IoT"
   password: "5yeh)SRM"
+  reboot_timeout: 0s
 
 # API & OTA für ESPHome
 api:
+  reboot_timeout: 0s
 ota:
 
 # Status LED des Atom Echo
