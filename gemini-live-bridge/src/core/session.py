@@ -392,7 +392,10 @@ class Session:
             if getattr(self, "out_channels", 1) == 2:
                 pcm_bytes = audioop.tostereo(pcm_bytes, self.out_depth // 8, 1, 1)
                 
-            await self.ha_ws.send_bytes(pcm_bytes)
+            chunk_size = 4096
+            for i in range(0, len(pcm_bytes), chunk_size):
+                await self.ha_ws.send_bytes(pcm_bytes[i:i + chunk_size])
+
             # Suppress mic while ding is playing
             self.speaker_active_until = time.time() + duration + self.MIC_TAIL_SECS
             logger.info(f"[Session {self.session_id}] 🔔 Chime sent to ESP32.")
@@ -450,7 +453,9 @@ class Session:
             elif self.gemini_chunks_received % 100 == 0:
                 logger.debug(f"[Session {self.session_id}] 🔊 Forwarded {self.gemini_chunks_received} audio chunks from Gemini to ESP32...")
 
-            await self.ha_ws.send_bytes(pcm_bytes)
+            chunk_size = 4096
+            for i in range(0, len(pcm_bytes), chunk_size):
+                await self.ha_ws.send_bytes(pcm_bytes[i:i + chunk_size])
         except Exception as e:
             logger.error(f"[Session {self.session_id}] Error sending to HA: {e}")
             raise  # Will propagate and cancel loops
