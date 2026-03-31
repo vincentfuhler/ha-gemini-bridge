@@ -39,6 +39,15 @@ class GeminiWebSocketClient : public Component {
   bool is_connected_ = false;
   uint32_t last_disconnect_time_ = 0;
   std::function<void(std::string)> on_state_callback_;
+  std::mutex state_mutex_;
+  std::string pending_state_ = "";
+  bool has_pending_state_ = false;
+
+  void trigger_state(const std::string& state) {
+      std::lock_guard<std::mutex> lock(state_mutex_);
+      pending_state_ = state;
+      has_pending_state_ = true;
+  }
 
  public:
   GeminiWebSocketClient(const std::string& url, microphone::Microphone *mic = nullptr,
@@ -168,6 +177,14 @@ class GeminiWebSocketClient : public Component {
   }
 
   void loop() override {
+      {
+          std::lock_guard<std::mutex> lock(state_mutex_);
+          if (has_pending_state_) {
+              if (on_state_callback_) on_state_callback_(pending_state_);
+              has_pending_state_ = false;
+          }
+      }
+
       // esp_websocket_client has its own auto-reconnect logic,
       // but if the Python bridge restarts abruptly, the TCP socket hangs permanently.
       // This non-blocking watchdog forces a hard reset of the socket if disconnected for > 5s.
@@ -197,14 +214,14 @@ class GeminiWebSocketClient : public Component {
             self->is_connected_ = true;
             self->last_disconnect_time_ = 0;
             ESP_LOGI("gemini_ws", "[WS] Connected to Gemini Bridge! Streaming mic audio.");
-            if (self->on_state_callback_) self->on_state_callback_("connected");
+            self->trigger_state("connected");
             break;
 
         case WEBSOCKET_EVENT_DISCONNECTED:
             self->is_connected_ = false;
             self->last_disconnect_time_ = millis();
             ESP_LOGW("gemini_ws", "[WS] Disconnected. Fast reconnect executing...");
-            if (self->on_state_callback_) self->on_state_callback_("disconnected");
+            self->trigger_state("disconnected");
             self->speaker_started_ = false;
             {
                 std::lock_guard<std::mutex> lock(self->audio_mutex_);
@@ -220,13 +237,13 @@ class GeminiWebSocketClient : public Component {
                 std::string payload((char*)data->data_ptr, data->data_len);
                 ESP_LOGI("gemini_ws", "[WS] Text payload received: %s", payload.c_str());
                 if (payload.find("\"state\": \"listening\"") != std::string::npos) {
-                    if (self->on_state_callback_) self->on_state_callback_("listening");
+                    self->trigger_state("listening");
                 }
                 else if (payload.find("\"state\": \"connected\"") != std::string::npos) {
-                    if (self->on_state_callback_) self->on_state_callback_("connected");
+                    self->trigger_state("connected");
                 }
                 else if (payload.find("\"state\": \"idle\"") != std::string::npos) {
-                    if (self->on_state_callback_) self->on_state_callback_("idle");
+                    self->trigger_state("idle");
                 }
             }
             else if (data->op_code == 2 && self->speaker_ != nullptr) {
