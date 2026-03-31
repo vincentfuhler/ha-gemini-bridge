@@ -71,7 +71,7 @@ class WakeWordEngine:
 
         # openwakeword returns prediction scores for all loaded models
         for mdl, score in prediction.items():
-            if score > 0.65:  # Trigger threshold (increased to 0.65 to reduce false positives)
+            if score > 0.5:  # Trigger threshold (lowered to 0.5 for new improved model)
                 logger.info(f"🎯 WAKE WORD DETECTED! Model: {mdl}, Score: {score}")
                 return True
                 
