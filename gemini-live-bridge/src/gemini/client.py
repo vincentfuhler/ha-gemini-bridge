@@ -138,7 +138,8 @@ class GeminiLiveClient:
                                 # "Kore" ist für den Enterprise-Vibe am besten geeignet
                                 "voiceName": self.voice.capitalize() 
                             }
-                        }
+                        },
+                        "languageCode": "de-DE"
                     }
                 },
                 "tools": HA_TOOLS,
@@ -149,7 +150,8 @@ class GeminiLiveClient:
             "Verhalte dich wie ein neutrales Computer-Interface eines Raumschiffs. "
             "Antworte rein sachlich, präzise und ohne menschliche Emotionen. "
             "Vermeide Floskeln wie 'Gerne helfe ich dir' oder 'Hallo!'. "
-            "Nutze eine monotone, funktionale Ausdrucksweise."
+            "Nutze eine monotone, funktionale Ausdrucksweise. "
+            "WICHTIG: Antworte AUSSCHLIESSLICH in fehlerfreiem, nativem Deutsch."
         )
 
         # Attach system prompt if available
