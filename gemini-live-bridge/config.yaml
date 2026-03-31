@@ -19,8 +19,6 @@ options:
   GEMINI_VOICE: "Puck"
   HA_URL: "http://supervisor/core"
   HA_TOKEN: ""
-  WAKE_WORD: "computer"
-  CUSTOM_WAKE_WORD_DIR: "/config/wakewords"
   LOG_LEVEL: "INFO"
   TRAINING_MODE: false
   OPTIMIZER_MODEL: "models/gemini-2.5-flash"
@@ -28,11 +26,9 @@ options:
 schema:
   GEMINI_API_KEY: "password"
   GEMINI_MODEL: "str"
-  GEMINI_VOICE: "str"
+  GEMINI_VOICE: "list(Aoede|Charon|Fenrir|Kore|Puck|Nova)"
   HA_URL: "str"
   HA_TOKEN: "password"
-  WAKE_WORD: "str"
-  CUSTOM_WAKE_WORD_DIR: "str"
   LOG_LEVEL: "match(^DEBUG|INFO|WARNING|ERROR|CRITICAL$)"
   TRAINING_MODE: "bool"
   OPTIMIZER_MODEL: "str"
